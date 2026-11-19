@@ -772,27 +772,63 @@ async function closeSesi(id) {
   if (!await confirmBox('Tutup sesi ini?', '<b>' + c.wait + '</b> pengurus belum tercatat dan akan dihitung <b>Alpa</b> pada laporan. Sesi bisa dibuka kembali dari menu Jadwal.', 'Tutup Sesi', true)) return;
   stopCam(); await setStatusJadwal(id, 'Selesai'); ST.sc.jadwalId = null; RENDER.scan();
 }
-/* Kamera: Html5Qrcode dimuat malas (hanya saat dipakai) */
+/* Kamera: jalur utama = getUserMedia + BarcodeDetector bawaan browser (cepat, andal di Chrome Android).
+   Cadangan = Html5Qrcode (dimuat malas) untuk browser tanpa BarcodeDetector. */
+function camError(e) {
+  const n = e && e.name || '';
+  if (n === 'NotAllowedError' || n === 'PermissionDeniedError') return 'Izin kamera ditolak. Ketuk ikon gembok di bilah alamat → Izin → Kamera → Izinkan, lalu muat ulang halaman.';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Kamera tidak ditemukan di perangkat ini.';
+  if (n === 'NotReadableError' || n === 'AbortError') return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi itu lalu coba lagi.';
+  if (n === 'SecurityError') return 'Kamera hanya bisa dipakai lewat alamat HTTPS.';
+  return (e && e.message) || 'Kamera tidak dapat dibuka.';
+}
+async function nativeSupported() {
+  try { if (!('BarcodeDetector' in window)) return false; const f = await window.BarcodeDetector.getSupportedFormats(); return f.indexOf('code_128') >= 0; } catch (e) { return false; }
+}
+function onCamCode(txt) { const now = Date.now(); if (txt === ST.sc.lastCode && now - ST.sc.lastAt < 2500) return; ST.sc.lastCode = txt; ST.sc.lastAt = now; doScan(txt, 'Scan'); }
 async function startCam() {
   const vf = $('#scVf'), msg = $('#scVfMsg'); if (!vf) return;
-  msg.innerHTML = '<span class="spin"></span><div style="margin-top:.5rem">Memuat kamera…</div>';
+  msg.classList.remove('hide'); msg.innerHTML = '<span class="spin"></span><div style="margin-top:.5rem">Membuka kamera…</div>';
   try {
-    await loadScript('https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js');
-    ST.sc.cam = ST.sc.cam || new Html5Qrcode('camReader', { formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.QR_CODE], useBarCodeDetectorIfSupported: true, verbose: false });
-    await ST.sc.cam.start({ facingMode: 'environment' }, { fps: 12, qrbox: (w, h) => ({ width: Math.floor(w * .78), height: Math.floor(h * .5) }) }, txt => {
-      const now = Date.now(); if (txt === ST.sc.lastCode && now - ST.sc.lastAt < 2500) return; ST.sc.lastCode = txt; ST.sc.lastAt = now; doScan(txt, 'Scan');
-    }, () => {});
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('Browser tidak mendukung kamera atau halaman bukan HTTPS.'), { name: 'SecurityError' });
+    if (await nativeSupported()) await startNativeCam(); else await startLibCam();
     ST.sc.camOn = true; vf.classList.add('run'); msg.classList.add('hide');
-    const cr = $('#camReader'); $$('video', cr).forEach(v => { v.style.cssText += ';width:100%;height:100%;object-fit:cover'; });
   } catch (e) {
-    msg.classList.remove('hide'); ST.sc.camOn = false;
-    msg.innerHTML = '<i class="bi bi-camera-video-off"></i><div style="margin-bottom:.5rem">Kamera tidak dapat dibuka</div><div class="help" style="color:#94A3B8;margin-bottom:.75rem">Izinkan akses kamera. Jika aplikasi dibuka dalam iframe, halaman induk perlu atribut <span class="mono">allow="camera"</span>. Alternatif: scanner USB/Bluetooth atau input kode di bawah.</div><button class="btn btn-2 btn-sm" data-act="scanStart"><i class="bi bi-arrow-repeat"></i> Coba lagi</button>';
+    await stopCam(true); msg.classList.remove('hide'); ST.sc.camOn = false;
+    msg.innerHTML = '<i class="bi bi-camera-video-off"></i><div style="margin-bottom:.5rem"><b>Kamera tidak dapat dibuka</b></div><div class="help" style="color:#94A3B8;margin-bottom:.75rem">' + esc(camError(e)) + '</div><button class="btn btn-pri btn-sm" data-act="scanStart"><i class="bi bi-arrow-repeat"></i> Coba Lagi</button>';
   }
 }
-async function stopCam() {
-  const c = ST.sc.cam; ST.sc.camOn = false;
+async function startNativeCam() {
+  const holder = $('#camReader'); holder.innerHTML = '';
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+  const v = document.createElement('video');
+  v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.setAttribute('autoplay', ''); v.muted = true; v.playsInline = true;
+  v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000';
+  holder.appendChild(v); v.srcObject = stream; ST.sc.stream = stream;
+  try { await v.play(); } catch (e) { stream.getTracks().forEach(t => t.stop()); ST.sc.stream = null; throw e; }
+  const det = new window.BarcodeDetector({ formats: ['code_128', 'qr_code'] }); const token = ST.sc.loop = {};
+  const tick = async () => {
+    if (ST.sc.loop !== token) return;
+    try { if (v.readyState >= 2 && v.videoWidth) { const r = await det.detect(v); if (r && r.length && ST.sc.loop === token) onCamCode(String(r[0].rawValue || '').trim()); } } catch (e) { /* frame gagal, lanjut */ }
+    if (ST.sc.loop === token) setTimeout(tick, 140);
+  };
+  tick();
+  setTimeout(() => { if (ST.sc.loop === token && !v.videoWidth) { const m = $('#scVfMsg'); if (m) { m.classList.remove('hide'); m.innerHTML = '<i class="bi bi-camera-video-off"></i><div class="help" style="color:#94A3B8">Kamera aktif tetapi gambar kosong. Tutup aplikasi kamera lain lalu coba lagi.</div><button class="btn btn-pri btn-sm" data-act="scanStart" style="margin-top:.5rem">Coba Lagi</button>'; } } }, 2500);
+}
+async function startLibCam() {
+  await loadScript('https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js');
+  $('#camReader').innerHTML = '';
+  ST.sc.cam = ST.sc.cam || new Html5Qrcode('camReader', { formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
+  await ST.sc.cam.start({ facingMode: 'environment' }, { fps: 12, qrbox: (w, h) => ({ width: Math.floor(w * .85), height: Math.floor(h * .4) }) }, txt => onCamCode(txt), () => {});
+  $$('video', $('#camReader')).forEach(v => { v.style.cssText += ';width:100%;height:100%;object-fit:cover'; });
+}
+async function stopCam(quiet) {
+  const c = ST.sc.cam; ST.sc.camOn = false; ST.sc.loop = null;
+  if (ST.sc.stream) { try { ST.sc.stream.getTracks().forEach(t => t.stop()); } catch (e) { } ST.sc.stream = null; }
   if (c) { try { if (c.isScanning) await c.stop(); c.clear(); } catch (e) { /* abaikan */ } ST.sc.cam = null; }
+  const holder = $('#camReader'); if (holder) holder.innerHTML = '';
   const vf = $('#scVf'); if (vf) vf.classList.remove('run');
+  if (quiet) return;
   const msg = $('#scVfMsg'); if (msg) { msg.classList.remove('hide'); msg.innerHTML = '<i class="bi bi-camera-video"></i><div style="margin-bottom:.75rem">Kamera belum aktif</div><button class="btn btn-pri btn-sm" data-act="scanStart"><i class="bi bi-camera-video"></i> Aktifkan Kamera</button>'; }
 }
 /* Penyegaran berkala sesi aktif (multi-operator) */
