@@ -1098,6 +1098,11 @@ function lapData() {
   rows.sort((a, b) => b.pct - a.pct || a.p.Nama.localeCompare(b.p.Nama));
   return { sess, rows };
 }
+function lapPdp() {
+  const f = ST.lap, jm = {}; ST.J.forEach(j => { jm[j.ID] = j; });
+  return ST.D.filter(d => { const j = jm[d.JadwalID]; return j && (!f.from || j.Tanggal >= f.from) && (!f.to || j.Tanggal <= f.to) && (!f.kel || d.Kelompok === f.kel); })
+    .map(d => ({ d, j: jm[d.JadwalID] })).sort((a, b) => a.j.Tanggal.localeCompare(b.j.Tanggal) || String(a.d.Waktu).localeCompare(String(b.d.Waktu)));
+}
 RENDER.laporan = function () {
   const el = $('#page-laporan'), kel = uniq(ST.P, 'Kelompok'), dap = uniq(ST.P, 'Dapukan'), f = ST.lap;
   el.innerHTML =
@@ -1131,6 +1136,12 @@ function rLapBody() {
         last.map(j => { const k = ST.kMap[j.ID + '|' + r.p.ID], st = k ? k.Status : 'Alpa', L = stLetter(st); return '<td class="s"><span class="dotc c-' + L + '">' + L + '</span></td>'; }).join('') +
         '<td class="num">' + r.h + '</td><td class="num">' + r.i + '</td><td class="num">' + r.s + '</td><td class="num">' + r.a + '</td><td><div style="display:flex;align-items:center;gap:.5rem"><div class="bar ' + cls + '" style="flex:1"><i style="width:' + r.pct + '%"></i></div><b class="mono">' + fmtPct(r.pct) + '</b></div></td></tr>';
     }).join('') : '<tr><td colspan="' + (9 + last.length) + '"><div class="empty"><i class="bi bi-inbox"></i>Tidak ada data pada filter ini.</div></td></tr>') + '</tbody></table></div></div>' +
+    (function () {
+      const pd = lapPdp();
+      return '<div class="card card-p" style="margin-top:1rem"><div class="card-h"><div><h3><i class="bi bi-person-raised-hand" style="color:var(--gold-d)"></i> Pendamping Hadir <span class="tag" style="margin-left:.375rem">' + pd.length + ' orang</span></h3><p>Tamu / pendamping yang hadir pada sesi di rentang terpilih (tidak dihitung dalam persentase pengurus).</p></div></div>' +
+        '<div class="tbl-wrap"><table class="t"><thead><tr><th>No</th><th>Tanggal</th><th>Sesi</th><th>Nama</th><th>Kelompok</th><th>Desa</th><th>Dapukan</th><th>Jam</th></tr></thead><tbody>' +
+        (pd.length ? pd.map((x, i) => '<tr><td class="mono mute">' + pad(i + 1) + '</td><td>' + esc(fmtTgl(x.j.Tanggal)) + '</td><td>' + esc(x.j.Tema) + '</td><td><b>' + esc(x.d.Nama) + '</b></td><td>' + esc(x.d.Kelompok) + '</td><td>' + esc(x.d.Desa) + '</td><td>' + esc(x.d.Dapukan) + '</td><td class="mono">' + esc(String(x.d.Waktu).slice(11, 16)) + '</td></tr>').join('') : '<tr><td colspan="8"><div class="empty"><i class="bi bi-inbox"></i>Belum ada pendamping tercatat pada rentang ini.</div></td></tr>') + '</tbody></table></div></div>';
+    })() +
     '<div class="grid g-8-4" style="margin-top:1rem"><div class="card card-p"><div class="card-h"><div><h3>Peringkat Presensi Antar Kelompok</h3><p>Rata-rata persentase kehadiran per kelompok · target ' + tgt + '%</p></div></div><div class="rank">' +
     (bk.length ? bk.map((x, i) => '<div class="rank-i"><div class="t"><span>' + esc(x.n) + (i === 0 ? ' <span class="chip c-H nodot" style="margin-left:.375rem">Terdisiplin #1</span>' : '') + '</span><span class="mono">' + fmtPct(x.v) + '</span></div><div class="bar ' + (x.v >= tgt ? '' : 'y') + '"><i style="width:' + x.v + '%"></i></div></div>').join('') : '<div class="empty">Tidak ada data.</div>') + '</div>' +
     '<div class="lbl" style="margin:1.25rem 0 .5rem">Distribusi kehadiran menurut dapukan</div><div class="dist">' + bd.slice(0, 6).map(x => '<div><b>' + fmtPct(x.v) + '</b>' + esc(x.n) + '</div>').join('') + '</div></div>' +
@@ -1144,12 +1155,16 @@ function lapExport() {
   const { sess, rows } = lapData();
   const head = ['No', 'Kode', 'Nama', 'Kelompok', 'Dapukan'].concat(sess.map(j => 'S' + ST.noOf[j.ID] + ' ' + j.Tanggal)).concat(['Hadir', 'Izin', 'Sakit', 'Alpa', 'Persentase (%)']);
   const data = rows.map((r, i) => [i + 1, r.p.Kode, r.p.Nama, r.p.Kelompok, r.p.Dapukan].concat(sess.map(j => { const k = ST.kMap[j.ID + '|' + r.p.ID]; return k ? k.Status : 'Alpa'; })).concat([r.h, r.i, r.s, r.a, Math.round(r.pct * 10) / 10]));
-  exportXlsx([{ name: 'Rekap Kehadiran', rows: [head].concat(data) }, { name: 'Daftar Sesi', rows: [['Sesi', 'Tanggal', 'Tema', 'Pemateri', 'Tempat']].concat(sess.map(j => [ST.noOf[j.ID], j.Tanggal, j.Tema, j.Pemateri, j.Tempat])) }], 'Rekap_Kehadiran_' + todayStr() + '.xlsx');
+  exportXlsx([{ name: 'Rekap Kehadiran', rows: [head].concat(data) }, { name: 'Pendamping', rows: [['No', 'Tanggal', 'Sesi', 'Nama', 'Kelompok', 'Desa', 'Dapukan', 'Jam']].concat(lapPdp().map((x, i) => [i + 1, x.j.Tanggal, x.j.Tema, x.d.Nama, x.d.Kelompok, x.d.Desa, x.d.Dapukan, String(x.d.Waktu).slice(11, 16)])) }, { name: 'Daftar Sesi', rows: [['Sesi', 'Tanggal', 'Tema', 'Pemateri', 'Tempat']].concat(sess.map(j => [ST.noOf[j.ID], j.Tanggal, j.Tema, j.Pemateri, j.Tempat])) }], 'Rekap_Kehadiran_' + todayStr() + '.xlsx');
 }
 function lapPrint() {
   const { sess, rows } = lapData(), last = sess.slice(-12);
   doPrint('<div class="prep"><h1>Laporan Kehadiran Pengajian Pengurus — ' + esc(ST.config.AppName) + '</h1><p>Dicetak ' + fmtTgl(todayStr()) + ' · ' + sess.length + ' sesi terlaksana · ' + rows.length + ' pengurus · Rata-rata ' + fmtPct(mean(rows.map(r => r.pct))) + '</p><table><thead><tr><th>No</th><th>Nama</th><th>Kelompok</th><th>Dapukan</th>' + last.map(j => '<th class="c">S' + ST.noOf[j.ID] + '</th>').join('') + '<th class="c">H</th><th class="c">I</th><th class="c">S</th><th class="c">A</th><th class="c">%</th></tr></thead><tbody>' +
-    rows.map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(r.p.Nama) + '</td><td>' + esc(r.p.Kelompok) + '</td><td>' + esc(r.p.Dapukan) + '</td>' + last.map(j => { const k = ST.kMap[j.ID + '|' + r.p.ID]; return '<td class="c">' + (k ? stLetter(k.Status) : 'A') + '</td>'; }).join('') + '<td class="c">' + r.h + '</td><td class="c">' + r.i + '</td><td class="c">' + r.s + '</td><td class="c">' + r.a + '</td><td class="c">' + fmtPct(r.pct) + '</td></tr>').join('') + '</tbody></table></div>');
+    rows.map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(r.p.Nama) + '</td><td>' + esc(r.p.Kelompok) + '</td><td>' + esc(r.p.Dapukan) + '</td>' + last.map(j => { const k = ST.kMap[j.ID + '|' + r.p.ID]; return '<td class="c">' + (k ? stLetter(k.Status) : 'A') + '</td>'; }).join('') + '<td class="c">' + r.h + '</td><td class="c">' + r.i + '</td><td class="c">' + r.s + '</td><td class="c">' + r.a + '</td><td class="c">' + fmtPct(r.pct) + '</td></tr>').join('') + '</tbody></table>' + (function () {
+    const pd = lapPdp(); if (!pd.length) return '';
+    return '<h1 style="font-size:12pt;margin:6mm 0 2mm">Pendamping Hadir (' + pd.length + ' orang)</h1><table><thead><tr><th>No</th><th>Tanggal</th><th>Sesi</th><th>Nama</th><th>Kelompok</th><th>Desa</th><th>Dapukan</th></tr></thead><tbody>' +
+      pd.map((x, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(fmtTgl(x.j.Tanggal)) + '</td><td>' + esc(x.j.Tema) + '</td><td>' + esc(x.d.Nama) + '</td><td>' + esc(x.d.Kelompok) + '</td><td>' + esc(x.d.Desa) + '</td><td>' + esc(x.d.Dapukan) + '</td></tr>').join('') + '</tbody></table>';
+  })() + '</div>');
 }
 
 /* ============================================================
