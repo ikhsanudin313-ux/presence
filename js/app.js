@@ -42,12 +42,12 @@ let CUR_ROLE = '';
 const isMaster = () => CUR_ROLE === 'master';
 const canScan = () => CUR_ROLE === 'master' || CUR_ROLE === 'penerobos';
 const cfgOrg = c => (c.CardOrg || c.AppName || 'Noor Presence');
-const cfgSub = c => (c.CardSub || 'Pengajian Pengurus');
+const tingkatOf = p => (p && p.Tingkat) || 'Daerah';
 
 /* ---------- State ---------- */
 const ST = {
   token: null, user: null, config: { AppName: 'Noor Presence', Target: 85 }, links: null,
-  P: [], J: [], K: [], B: [], pById: {}, pByKode: {}, jById: {}, kMap: {}, act: [], done: [], noOf: {},
+  P: [], J: [], K: [], B: [], D: [], pById: {}, pByKode: {}, jById: {}, kMap: {}, act: [], done: [], noOf: {},
   page: 'dashboard', queue: store.get('np_q') || [], inflight: 0, flushing: false, lastSync: null,
   pg: { page: 1, size: 10, sel: new Set(), cur: null },
   sc: { jadwalId: null, last: null, bad: [], cam: null, camOn: false, lastCode: '', lastAt: 0, sound: true },
@@ -92,7 +92,7 @@ function settleSync(failed) { if (ST.inflight > 0) return; setSync(failed || ST.
 const unpack = t => t.r.map(r => { const o = {}; t.c.forEach((c, i) => { o[c] = r[i]; }); return o; });
 const cmpJ = (a, b) => (a.Tanggal + a.Mulai).localeCompare(b.Tanggal + b.Mulai);
 function ingest(boot) {
-  ST.P = unpack(boot.pengurus); ST.J = unpack(boot.jadwal); ST.K = unpack(boot.kehadiran); ST.B = boot.bimbingan ? unpack(boot.bimbingan) : [];
+  ST.P = unpack(boot.pengurus); ST.J = unpack(boot.jadwal); ST.K = unpack(boot.kehadiran); ST.B = boot.bimbingan ? unpack(boot.bimbingan) : []; ST.D = boot.pendamping ? unpack(boot.pendamping) : [];
   ST.config = boot.config || ST.config; ST.links = boot.links || null; ST.user = boot.user || ST.user;
   index();
 }
@@ -107,7 +107,7 @@ function index() {
   ST.noOf = {}; ST.J.slice().sort(cmpJ).forEach((j, i) => { ST.noOf[j.ID] = i + 1; });
   persistSoon();
 }
-const persistSoon = debounce(() => store.set('np_d', { P: ST.P, J: ST.J, K: ST.K, B: ST.B, config: ST.config, links: ST.links, t: Date.now() }), 400);
+const persistSoon = debounce(() => store.set('np_d', { P: ST.P, J: ST.J, K: ST.K, B: ST.B, D: ST.D, config: ST.config, links: ST.links, t: Date.now() }), 400);
 const saveQueue = () => store.set('np_q', ST.queue);
 
 /* ---------- Statistik ---------- */
@@ -280,7 +280,7 @@ async function flushQueue() {
       const it = ST.queue[0];
       try {
         const r = await call(it.a, it.p);
-        applyServerRec(r); ST.queue.shift(); saveQueue();
+        if (it.a === 'pendamping.add' && r.rec) { const d = ST.D.find(x => x.JadwalID === it.p.jadwalId && x.Kode === it.p.kode); if (d) { Object.assign(d, r.rec); delete d._pending; } } else applyServerRec(r); ST.queue.shift(); saveQueue();
       } catch (e) {
         if (e.net || e.auth) break;
         if (e.code === 'DUP') { ST.queue.shift(); saveQueue(); continue; }
@@ -365,7 +365,7 @@ function pgFiltered() {
 }
 const uniq = (arr, k) => Array.from(new Set(arr.map(x => x[k]).filter(Boolean))).sort();
 RENDER.pengurus = function () {
-  ['addPengurus', 'printSelected'].forEach(a => { const b = $('[data-act=' + a + ']'); if (b) b.classList.toggle('hide', !isMaster()); });
+  ['addPengurus', 'printSelected', 'jpgSelected', 'delSelected', 'pdpCards'].forEach(a => { const b = $('[data-act=' + a + ']'); if (b) b.classList.toggle('hide', !isMaster()); });
   const kel = uniq(ST.P, 'Kelompok'), dap = uniq(ST.P, 'Dapukan');
   const sel = (id, def, list) => { const cur = $(id).value; $(id).innerHTML = '<option value="">' + def + '</option>' + list.map(x => '<option>' + esc(x) + '</option>').join(''); $(id).value = list.indexOf(cur) >= 0 ? cur : ''; };
   sel('#fgKel', 'Semua Kelompok', kel); sel('#fgDap', 'Semua Dapukan', dap);
@@ -406,18 +406,107 @@ function rPgTable() {
   $('#pgNav').innerHTML = nav; rPgPreview();
 }
 const tglLahir = s => { const d = dObj(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] + ' ' + d.getFullYear() : ''; };
+const PF_CUT = 8, PF_RING = 3, PF_PAD = 4, PF_MAXW = 98, PF_MAXH = 86;      // bingkai foto: emas 3px + putih 4px
+function fitPf(img) {                                                       // bingkai mengikuti rasio foto (tanpa potong)
+  const w = img.naturalWidth || 3, h = img.naturalHeight || 4, sc = Math.min(PF_MAXW / w, PF_MAXH / h);
+  img.style.width = Math.round(w * sc) + 'px'; img.style.height = Math.round(h * sc) + 'px'; img.style.visibility = 'visible';
+}
+window.fitPf = fitPf;
+const SILH = '<svg viewBox="0 0 64 86" width="64" height="86" aria-hidden="true"><rect width="64" height="86" fill="#E2EAE6"/><circle cx="32" cy="32" r="14" fill="#94A9A0"/><path d="M6 86c2-22 14-30 26-30s24 8 26 30z" fill="#94A9A0"/></svg>';
 function cardHTML(p, cfg) {
   cfg = cfg || ST.config;
+  const pdp = !!p._pdp, hasImg = !pdp && !!p.FotoID;
   const ttl = [p.TempatLahir, tglLahir(p.TanggalLahir)].filter(Boolean).join(', ') || '—';
-  const hasImg = !!p.FotoID;
   const moon = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15.5 3.2a9 9 0 1 0 5.3 13.9A7.5 7.5 0 0 1 15.5 3.2z" fill="#FBBF24"/><path d="M18.6 4.6l.7 1.6 1.7.2-1.3 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.3-1.1 1.7-.2z" fill="#FBBF24"/></svg>';
   const logoSrc = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
+  const title = pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase();
+  const photo = hasImg ? '<img alt="" style="visibility:hidden" onload="fitPf(this)" src="https://lh3.googleusercontent.com/d/' + esc(p.FotoID) + '=w480">'
+    : pdp ? SILH : '<div class="phd">' + esc(initials(p.Nama)) + '</div>';
+  const rows = pdp ? [['Nama', ''], ['Kelompok', ''], ['Desa', ''], ['Dapukan', '']]
+    : [['TTL', ttl], ['Kelompok', p.Kelompok]].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
   return '<div class="idc"><div class="idc-top"></div><div class="idc-wave"></div><div class="idc-in">' +
-    '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">' + esc(cfgSub(cfg)).toUpperCase() + '</div>' +
-    '<div class="idc-hx"><div class="hx o"></div><div class="hx m"></div><div class="hx i ' + (hasImg ? '' : 'ph') + '">' + (hasImg ? '<img alt="" src="https://lh3.googleusercontent.com/d/' + esc(p.FotoID) + '=w480">' : esc(initials(p.Nama))) + '</div></div>' +
-    '<div class="idc-n">' + esc(p.Nama) + '</div><div class="idc-d">' + esc(p.Dapukan) + '</div>' +
-    '<div class="idc-i"><span class="l">TTL</span><span>:</span><b>' + esc(ttl) + '</b><span class="l">Kelompok</span><span>:</span><b>' + esc(p.Kelompok) + '</b>' + (p.Desa ? '<span class="l">Desa</span><span>:</span><b>' + esc(p.Desa) + '</b>' : '') + '<span class="l">Alamat</span><span>:</span><b>' + esc(p.Alamat || '—') + '</b></div>' +
+    '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">' + title + '</div>' +
+    '<div class="idc-hx"><div class="pf"><div class="pi">' + photo + '</div></div></div>' +
+    '<div class="idc-n">' + (pdp ? 'PENDAMPING' : esc(p.Nama)) + '</div><div class="idc-d">' + (pdp ? 'Tamu / Pendamping Pengajian' : esc(p.Dapukan)) + '</div>' +
+    '<div class="idc-i">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
     '<div class="idc-b"><svg class="bc" data-code="' + esc(p.Kode) + '"></svg><div>' + esc(p.Kode) + '</div></div></div></div>';
+}
+
+/* ---------- Unduh ID Card sebagai JPG (digambar di <canvas>, tanpa pustaka luar) ---------- */
+const IMGC = {};
+function imgFromSrc(src) { return new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('Gambar gagal dimuat')); i.src = src; }); }
+async function imgFromId(id) {
+  if (!IMGC[id]) { const r = await call('file.data', { id }); IMGC[id] = r.data; }
+  return imgFromSrc(IMGC[id]);
+}
+function chamfer(ctx, x, y, w, h, c) { ctx.beginPath(); ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c); ctx.lineTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h); ctx.lineTo(x + c, y + h); ctx.lineTo(x, y + h - c); ctx.lineTo(x, y + c); ctx.closePath(); }
+function wrapText(ctx, text, maxW, maxLines) {
+  const words = String(text || '').split(/\s+/).filter(Boolean), lines = []; let cur = '';
+  words.forEach(w => { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; } });
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) { lines.length = maxLines; let l = lines[maxLines - 1]; while (l.length > 1 && ctx.measureText(l + '…').width > maxW) l = l.slice(0, -1); lines[maxLines - 1] = l + '…'; }
+  return lines;
+}
+async function drawCardCanvas(p, cfg) {
+  cfg = cfg || ST.config; const S = 6, W = 216, H = 344, pdp = !!p._pdp, FF = '"Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif';
+  try { await Promise.all(['800 9px', '700 8px', '600 7px'].map(f => document.fonts.load(f + ' "Plus Jakarta Sans"')).concat([document.fonts.load('600 7px "JetBrains Mono"')])); } catch (e) { }
+  const [photo, logo] = await Promise.all([
+    (!pdp && p.FotoID) ? imgFromId(p.FotoID).catch(() => null) : null,
+    cfg.LogoData ? imgFromSrc(cfg.LogoData).catch(() => null) : (cfg.LogoID ? imgFromId(cfg.LogoID).catch(() => null) : null)
+  ]);
+  const cv = document.createElement('canvas'); cv.width = W * S; cv.height = H * S; const x = cv.getContext('2d'); x.scale(S, S);
+  const txt = (t, cx, cy, font, color, align) => { x.font = font; x.fillStyle = color; x.textAlign = align || 'center'; x.textBaseline = 'middle'; x.fillText(t, cx, cy); };
+  x.save(); x.beginPath(); x.roundRect(0, 0, W, H, 14); x.clip();
+  let g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#EEF3F0'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  g = x.createLinearGradient(-16, 0, 232, 128); g.addColorStop(0, '#166534'); g.addColorStop(.55, '#14532D'); g.addColorStop(1, '#064E3B'); x.fillStyle = g;
+  x.beginPath(); x.moveTo(-16, 0); x.lineTo(232, 0); x.lineTo(232, 128 - 56.3); x.ellipse(108, 128 - 56.3, 124, 56.3, 0, 0, Math.PI, false); x.closePath(); x.fill();
+  x.save(); x.clip(); x.fillStyle = 'rgba(255,255,255,.08)'; for (let yy = 10; yy < 128; yy += 20) for (let xx = -6; xx < 232; xx += 20) { x.beginPath(); x.arc(xx, yy, 1.2, 0, 7); x.fill(); } x.restore();
+  g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, '#B45309'); g.addColorStop(.5, '#F59E0B'); g.addColorStop(1, '#B45309'); x.fillStyle = g; x.fillRect(0, H - 5, W, 5);
+  x.restore();
+  x.strokeStyle = '#E2E8F0'; x.lineWidth = .5; x.beginPath(); x.roundRect(.25, .25, W - .5, H - .5, 14); x.stroke();
+  x.beginPath(); x.arc(108, 23, 14, 0, 7); x.fillStyle = logo ? '#fff' : 'rgba(0,0,0,.14)'; x.fill(); x.lineWidth = 2; x.strokeStyle = '#F59E0B'; x.stroke();
+  if (logo) { x.save(); x.beginPath(); x.arc(108, 23, 13, 0, 7); x.clip(); const sc = Math.min(26 / logo.width, 26 / logo.height); x.drawImage(logo, 108 - logo.width * sc / 2, 23 - logo.height * sc / 2, logo.width * sc, logo.height * sc); x.restore(); }
+  else { x.fillStyle = '#FBBF24'; x.beginPath(); x.arc(107, 23, 6.5, 0, 7); x.fill(); x.fillStyle = '#14532D'; x.beginPath(); x.arc(110, 21, 5.6, 0, 7); x.fill(); }
+  let org = cfgOrg(cfg).toUpperCase(); x.font = '800 9px ' + FF; while (org.length > 3 && x.measureText(org).width > 190) org = org.slice(0, -1);
+  txt(org, 108, 45.5, '800 9px ' + FF, '#FBBF24');
+  txt(pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase(), 108, 56, '600 6.5px ' + FF, '#FFFFFF');
+  let iw = 64, ih = 86; if (photo) { const sc = Math.min(PF_MAXW / photo.width, PF_MAXH / photo.height); iw = Math.round(photo.width * sc); ih = Math.round(photo.height * sc); }
+  const fw = iw + 2 * (PF_RING + PF_PAD), fh = ih + 2 * (PF_RING + PF_PAD), fx = 108 - fw / 2, fy = 66.5 + (100 - fh) / 2;
+  g = x.createLinearGradient(fx, fy, fx + fw, fy + fh); g.addColorStop(0, '#F59E0B'); g.addColorStop(.5, '#FBBF24'); g.addColorStop(1, '#D97706'); x.fillStyle = g; chamfer(x, fx, fy, fw, fh, PF_CUT); x.fill();
+  x.fillStyle = '#fff'; chamfer(x, fx + PF_RING, fy + PF_RING, fw - 2 * PF_RING, fh - 2 * PF_RING, PF_CUT - PF_RING * .586); x.fill();
+  const ix = fx + PF_RING + PF_PAD, iy = fy + PF_RING + PF_PAD;
+  if (photo) x.drawImage(photo, ix, iy, iw, ih);
+  else if (pdp) { x.fillStyle = '#E2EAE6'; x.fillRect(ix, iy, iw, ih); x.fillStyle = '#94A9A0'; x.beginPath(); x.arc(ix + iw / 2, iy + 32, 14, 0, 7); x.fill(); x.beginPath(); x.moveTo(ix + 6, iy + ih); x.bezierCurveTo(ix + 8, iy + 64, ix + 20, iy + 56, ix + iw / 2, iy + 56); x.bezierCurveTo(ix + iw - 20, iy + 56, ix + iw - 8, iy + 64, ix + iw - 6, iy + ih); x.fill(); }
+  else { x.fillStyle = '#065F46'; x.fillRect(ix, iy, iw, ih); txt(initials(p.Nama), ix + iw / 2, iy + ih / 2, '700 26px ' + FF, '#fff'); }
+  const nm = pdp ? 'PENDAMPING' : String(p.Nama || '').toUpperCase(); x.font = '800 12px ' + FF;
+  const nl = wrapText(x, nm, 192, 2), ny = 179.5 - (nl.length - 1) * 6.9;
+  nl.forEach((l, i) => txt(l, 108, ny + i * 13.8, '800 12px ' + FF, '#B45309'));
+  const dy = ny + (nl.length - 1) * 13.8 + 14;
+  x.font = '700 8px ' + FF; let dp = pdp ? 'Tamu / Pendamping Pengajian' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
+  txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
+  const ttl = [p.TempatLahir, tglLahir(p.TanggalLahir)].filter(Boolean).join(', ') || '—';
+  const rows = pdp ? [['Nama', ''], ['Kelompok', ''], ['Desa', ''], ['Dapukan', '']] : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
+  x.font = '600 7.3px ' + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
+  let ry = dy + 12;
+  rows.forEach(r => {
+    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '600 7.3px ' + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
+    if (pdp) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 8.5); x.lineTo(200, ry + 8.5); x.stroke(); x.setLineDash([]); ry += 14; }
+    else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += ls.length * 9.86 + 2; }
+  });
+  const bc = code128(String(p.Kode)), bw = 169, k = bw / bc.w, bx = (W - bw) / 2, by = 292; x.fillStyle = '#000';
+  const re = /M(\d+) 0h(\d+)/g; let m; while ((m = re.exec(bc.d))) x.fillRect(bx + (+m[1]) * k, by, (+m[2]) * k, 28);
+  txt(String(p.Kode), 108, 329, '600 6.5px "JetBrains Mono", ui-monospace, Consolas, monospace', '#0F172A');
+  return cv;
+}
+function saveCanvasJpg(cv, name) {
+  return new Promise(res => cv.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); res(); }, 1200); }, 'image/jpeg', .95));
+}
+const safeName = t => String(t || 'kartu').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'kartu';
+async function downloadCards(list) {
+  if (!list.length) { toast('Pilih pengurus terlebih dahulu (centang di tabel).', 'warn'); return; }
+  toast('Menyiapkan ' + list.length + ' kartu JPG…');
+  try { for (let i = 0; i < list.length; i++) { const cv = await drawCardCanvas(list[i]); await saveCanvasJpg(cv, 'IDCard_' + (list[i]._pdp ? list[i].Kode : safeName(list[i].Nama) + '_' + list[i].Kode) + '.jpg'); if (i < list.length - 1) await sleep(500); } toast(list.length + ' kartu JPG diunduh.'); }
+  catch (e) { toast('Gagal membuat JPG: ' + e.message, 'err'); }
 }
 /* Barcode Code-128 (subset B) dibuat sendiri → tanpa pustaka CDN, tampil & tercetak andal */
 const C128 = '212222,222122,222221,121223,121322,131222,122213,122312,132212,221213,221312,231212,112232,122132,122231,113222,123122,123221,223211,221132,221231,213212,223112,312131,311222,321122,321221,312212,322112,322211,212123,212321,232121,111323,131123,131321,112313,132113,132311,211313,231113,231311,112133,112331,132131,113123,113321,133121,313121,211331,231131,213113,213311,213131,311123,311321,331121,312113,312311,332111,314111,221411,431111,111224,111422,121124,121421,141122,141221,112214,112412,122114,122411,142112,142211,241211,221114,413111,241112,134111,111242,121142,121241,114212,124112,124211,411212,421112,421211,212141,214121,412121,111143,111341,131141,114113,114311,411113,411311,113141,114131,311141,411131,211412,211214,211232,2331112'.split(',');
@@ -441,13 +530,13 @@ function drawBarcodes(root) {
 function rPgPreview() {
   const p = ST.pById[ST.pg.cur], box = $('#pgPreview');
   if (!p) { box.innerHTML = '<div class="empty"><i class="bi bi-person-vcard"></i>Pilih pengurus untuk melihat pratinjau kartu.</div>'; return; }
-  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) + (!isMaster() ? '<div class="pv-acts"><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
-    (!isMaster() ? '' : '<div class="pv-acts"><button class="btn btn-pri" data-act="printCard" data-id="' + p.ID + '"><i class="bi bi-printer"></i> Cetak Kartu Ini</button>' +
+  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) + (!isMaster() ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
+    (!isMaster() ? '' : '<div class="pv-acts"><div class="row c2"><button class="btn btn-pri" data-act="printCard" data-id="' + p.ID + '"><i class="bi bi-printer"></i> Cetak</button><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div>' +
     '<div class="row c2"><button class="btn btn-2" data-act="editPengurus" data-id="' + p.ID + '"><i class="bi bi-pencil"></i> Ubah</button><button class="btn btn-2" data-act="regenKode" data-id="' + p.ID + '"><i class="bi bi-arrow-repeat"></i> Barcode Baru</button></div>' +
     '<div class="row c2"><button class="btn btn-2" data-act="togglePengurus" data-id="' + p.ID + '"><i class="bi bi-' + (p.Aktif === false ? 'toggle-off' : 'toggle-on') + '"></i> ' + (p.Aktif === false ? 'Aktifkan' : 'Nonaktifkan') + '</button><button class="btn btn-danger" data-act="delPengurus" data-id="' + p.ID + '"><i class="bi bi-trash"></i> Hapus</button></div></div>');
   drawBarcodes(box);
 }
-/* Kode barcode = INISIAL nama + 3 angka (BS001). Server tetap penentu akhir. */
+/* Kode barcode = KTP- + INISIAL nama + 3 angka (KTP-BS001). Server tetap penentu akhir. */
 function initialsOf(nama) {
   let t = String(nama || '').split(',')[0].split(/\s+/).filter(Boolean);
   while (t.length > 1 && /^(h|hj|ust|ustadz|ustadzah|kh|k\.h|dr|ir|prof|drs|dra|sdr|bpk|ibu)\.?$/i.test(t[0])) t.shift();
@@ -457,7 +546,7 @@ function initialsOf(nama) {
   return ini.length < 2 ? ini + 'X' : ini;
 }
 function nextKodeLocal(nama) {
-  const pref = initialsOf(nama), used = {}; let max = 0; const re = new RegExp('^' + pref + '(\\d+)$');
+  const pref = 'KTP-' + initialsOf(nama), used = {}; let max = 0; const re = new RegExp('^' + pref + '(\\d+)$');
   ST.P.forEach(p => { const k = String(p.Kode || '').toUpperCase(); used[k] = 1; const m = re.exec(k); if (m) max = Math.max(max, +m[1]); });
   let n = max + 1; while (used[pref + pad(n, 3)]) n++; return pref + pad(n, 3);
 }
@@ -486,6 +575,7 @@ function pengurusForm(id) {
     '<div class="fld"><label for="fKel">Kelompok *</label><input class="input" id="fKel" list="dlKel" value="' + v('Kelompok') + '" maxlength="40" required></div>' +
     '<div class="fld"><label for="fDesa">Desa</label><input class="input" id="fDesa" list="dlDesa" value="' + v('Desa') + '" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
     '<div class="fld"><label for="fDap">Dapukan *</label><input class="input" id="fDap" list="dlDap" value="' + v('Dapukan') + '" maxlength="60" required></div>' +
+    '<div class="fld"><label for="fTk">Tingkat pengurus *</label><select class="select" id="fTk">' + ['Daerah', 'Desa', 'Kelompok'].map(t => '<option ' + (tingkatOf(p) === t ? 'selected' : '') + '>' + t + '</option>').join('') + '</select><div class="help">Menentukan tulisan di ID Card: “ID CARD PENGURUS …”.</div></div>' +
     '<datalist id="dlKel">' + uniq(ST.P, 'Kelompok').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDesa">' + uniq(ST.P, 'Desa').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDap">' + uniq(ST.P, 'Dapukan').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
     '<div class="fld"><label for="fAlm">Alamat</label><textarea class="textarea" id="fAlm" maxlength="200">' + v('Alamat') + '</textarea></div>' +
     '<div class="row c2"><div class="fld"><label for="fHp">No. HP / WA</label><input class="input" id="fHp" inputmode="tel" value="' + v('NoHP') + '" maxlength="20"></div><div class="fld"><label for="fAkt">Status</label><select class="select" id="fAkt"><option value="1">Aktif</option><option value="0" ' + (p && p.Aktif === false ? 'selected' : '') + '>Nonaktif</option></select></div></div>' +
@@ -498,7 +588,7 @@ function pengurusForm(id) {
       };
       $('#fPg', box).onsubmit = ev => {
         ev.preventDefault();
-        const rec = { ID: p ? p.ID : '', Nama: $('#fNama').value.trim(), TempatLahir: $('#fTmp').value.trim(), TanggalLahir: $('#fTgl').value, Kelompok: $('#fKel').value.trim(), Desa: $('#fDesa').value.trim(), Alamat: $('#fAlm').value.trim(), Dapukan: $('#fDap').value.trim(), NoHP: $('#fHp').value.trim(), Aktif: $('#fAkt').value === '1' };
+        const rec = { ID: p ? p.ID : '', Nama: $('#fNama').value.trim(), TempatLahir: $('#fTmp').value.trim(), TanggalLahir: $('#fTgl').value, Kelompok: $('#fKel').value.trim(), Desa: $('#fDesa').value.trim(), Tingkat: $('#fTk').value, Alamat: $('#fAlm').value.trim(), Dapukan: $('#fDap').value.trim(), NoHP: $('#fHp').value.trim(), Aktif: $('#fAkt').value === '1' };
         if (!rec.Nama || !rec.Kelompok || !rec.Dapukan) { $('#fErr').textContent = 'Nama, kelompok, dan dapukan wajib diisi.'; return; }
         savePengurus(rec, photo);
       };
@@ -528,12 +618,31 @@ async function togglePengurus(id) {
   try { await call('pengurus.save', { rec: Object.assign({}, p, { Aktif: p.Aktif }) }); toast(p.Aktif ? 'Pengurus diaktifkan.' : 'Pengurus dinonaktifkan.'); }
   catch (e) { p.Aktif = was; index(); RENDER.pengurus(); toast('Gagal: ' + e.message, 'err'); }
 }
+function purgeLocal(ids) { const set = new Set(ids); ST.P = ST.P.filter(p => !set.has(p.ID)); ST.K = ST.K.filter(k => !set.has(k.PengurusID)); ids.forEach(i => ST.pg.sel.delete(i)); if (set.has(ST.pg.cur)) ST.pg.cur = null; index(); if (ST.page === 'pengurus') RENDER.pengurus(); }
 async function delPengurus(id) {
   const p = ST.pById[id]; if (!p) return;
-  if (!await confirmBox('Hapus pengurus?', 'Hapus <b>' + esc(p.Nama) + '</b> secara permanen? Jika sudah punya riwayat kehadiran, sistem akan menolak — gunakan Nonaktifkan.', 'Hapus', true)) return;
-  const idx = ST.P.indexOf(p); ST.P.splice(idx, 1); ST.pg.sel.delete(id); index(); RENDER.pengurus();
-  try { await call('pengurus.delete', { id }); toast('Pengurus dihapus.'); }
-  catch (e) { ST.P.splice(idx, 0, p); index(); RENDER.pengurus(); toast(e.message, 'err'); }
+  if (!await confirmBox('Hapus pengurus?', 'Hapus <b>' + esc(p.Nama) + '</b> secara permanen?', 'Hapus', true)) return;
+  try { await call('pengurus.delete', { id }); purgeLocal([id]); toast('Pengurus dihapus.'); }
+  catch (e) {
+    if (e.code !== 'HASRIWAYAT') { toast(e.message, 'err'); return; }
+    if (!await confirmBox('Hapus beserta riwayat?', '<b>' + esc(p.Nama) + '</b> sudah punya riwayat kehadiran. Jika dihapus, <b>seluruh riwayat kehadirannya ikut terhapus</b> dan persentase laporan berubah. Alternatif yang lebih aman: Nonaktifkan.', 'Hapus Semuanya', true)) return;
+    try { await call('pengurus.delete', { id, force: true }); purgeLocal([id]); toast('Pengurus & riwayatnya dihapus.'); } catch (x) { toast(x.message, 'err'); }
+  }
+}
+async function delSelected() {
+  const ids = [...ST.pg.sel].filter(i => ST.pById[i]); if (!ids.length) { toast('Centang pengurus yang akan dihapus.', 'warn'); return; }
+  if (!await confirmBox('Hapus ' + ids.length + ' pengurus?', 'Data yang dipilih akan dihapus permanen. Pengurus yang punya riwayat kehadiran ditanyakan terpisah.', 'Hapus', true)) return;
+  try {
+    const r = await call('pengurus.deleteMany', { ids, force: false }); purgeLocal(r.ids || []);
+    let msg = (r.deleted || 0) + ' pengurus dihapus.';
+    if (r.blocked && r.blocked.length) {
+      const names = r.blocked.map(i => (ST.pById[i] || {}).Nama).filter(Boolean).slice(0, 5).join(', ');
+      if (await confirmBox('Hapus juga yang punya riwayat?', r.blocked.length + ' pengurus punya riwayat kehadiran (' + esc(names) + (r.blocked.length > 5 ? ', …' : '') + '). Hapus beserta <b>seluruh riwayatnya</b>?', 'Hapus Semuanya', true)) {
+        const r2 = await call('pengurus.deleteMany', { ids: r.blocked, force: true }); purgeLocal(r2.ids || []); msg += ' + ' + (r2.deleted || 0) + ' beserta riwayat.';
+      }
+    }
+    toast(msg);
+  } catch (e) { toast('Gagal menghapus: ' + e.message, 'err'); }
 }
 async function regenKode(id) {
   const p = ST.pById[id]; if (!p) return;
@@ -561,6 +670,57 @@ async function exportXlsx(sheets, filename) {
     sheets.forEach(s => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s.rows), s.name));
     XLSX.writeFile(wb, filename); toast('Berkas Excel diunduh.');
   } catch (e) { toast('Ekspor gagal: ' + e.message, 'err'); }
+}
+
+/* ============================================================
+   PENDAMPING: kartu umum PDP-001… ; saat dipindai muncul isian data
+   ============================================================ */
+const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
+const pdpCard = n => ({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: 'Pendamping' });
+function nextPdpNo() { let m = 0; ST.D.forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
+function pdpCardsForm() {
+  openModal('<div class="modal-h"><h3>Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
+    '<p class="ink2" style="margin-bottom:1rem">Kartu umum tanpa nama. Saat dipindai pada sesi pengajian, aplikasi meminta pendamping mengisi <b>Nama, Kelompok, Desa, dan Dapukan</b>.</p>' +
+    '<div class="row c2"><div class="fld"><label for="pdN">Jumlah kartu</label><input class="input" id="pdN" type="number" min="1" max="30" value="5"></div><div class="fld"><label for="pdS">Mulai dari nomor</label><input class="input" id="pdS" type="number" min="1" max="9999" value="' + nextPdpNo() + '"></div></div>' +
+    '<div id="pdPv" style="display:flex;justify-content:center;margin-top:.5rem"></div></div>' +
+    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="pdJpg"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button type="button" class="btn btn-pri" id="pdPrint"><i class="bi bi-printer"></i> Cetak</button></div>',
+    box => {
+      const list = () => { const n = Math.max(1, Math.min(30, +$('#pdN', box).value || 1)), s0 = Math.max(1, Math.min(9999, +$('#pdS', box).value || 1)); return Array.from({ length: n }, (_, i) => pdpCard(s0 + i)); };
+      const pv = () => { $('#pdPv', box).innerHTML = cardHTML(list()[0]); drawBarcodes($('#pdPv', box)); };
+      $('#pdN', box).oninput = $('#pdS', box).oninput = pv; pv();
+      $('#pdPrint', box).onclick = () => { const l = list(); let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; closeModal(); doPrint(html); };
+      $('#pdJpg', box).onclick = () => downloadCards(list());
+    });
+}
+function pdpScanForm(code, j) {
+  const all = ST.P.concat(ST.D), dl = (id, k) => '<datalist id="' + id + '">' + uniq(all, k).map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>';
+  openModal('<div class="modal-h"><h3>Data Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><form id="fPdp" novalidate><div class="modal-b">' +
+    '<p class="ink2" style="margin-bottom:1rem">Kartu <b class="mono">' + esc(code) + '</b> terbaca. Isi data pendamping untuk sesi <b>' + esc(j.Tema) + '</b>.</p>' +
+    '<div class="fld"><label for="pdNama">Nama *</label><input class="input" id="pdNama" maxlength="80" autocomplete="off" required></div>' +
+    '<div class="fld"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" list="dlKel2" maxlength="40"></div>' +
+    '<div class="fld"><label for="pdDesa">Desa</label><input class="input" id="pdDesa" list="dlDesa2" maxlength="40"></div>' +
+    '<div class="fld"><label for="pdDap">Dapukan</label><input class="input" id="pdDap" list="dlDap2" maxlength="60" placeholder="Contoh: Pendamping"></div>' +
+    dl('dlKel2', 'Kelompok') + dl('dlDesa2', 'Desa') + dl('dlDap2', 'Dapukan') +
+    '<div class="err" id="pdErr" role="alert"></div></div><div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Batal</button><button type="submit" class="btn btn-pri"><i class="bi bi-check2"></i> Catat Hadir</button></div></form>',
+    box => {
+      setTimeout(() => { const i = $('#pdNama', box); if (i) i.focus(); }, 60);
+      $('#fPdp', box).onsubmit = ev => {
+        ev.preventDefault(); const nama = $('#pdNama', box).value.trim(); if (nama.length < 2) { $('#pdErr', box).textContent = 'Nama wajib diisi.'; return; }
+        const rec = { ID: 'tmp' + uid(), JadwalID: j.ID, Kode: code, Waktu: nowStr(), Nama: nama, Kelompok: $('#pdKel', box).value.trim(), Desa: $('#pdDesa', box).value.trim(), Dapukan: $('#pdDap', box).value.trim(), Oleh: ST.user.username, _pending: true };
+        const payload = { jadwalId: j.ID, kode: code, nama: rec.Nama, kelompok: rec.Kelompok, desa: rec.Desa, dapukan: rec.Dapukan };
+        ST.D.push(rec); closeModal(); beep('ok'); toast('Pendamping dicatat: ' + nama); persistSoon(); if (ST.page === 'scan') rScanLive();
+        if (j.Status === 'Terjadwal') setStatusJadwal(j.ID, 'Berlangsung', true);
+        call('pendamping.add', payload)
+          .then(r => { Object.assign(rec, r.rec); delete rec._pending; persistSoon(); if (ST.page === 'scan') rScanLive(); })
+          .catch(e => { if (e.net) { enqueue('pendamping.add', payload); return; } ST.D = ST.D.filter(d => d !== rec); beep('bad'); toast(e.message, 'err'); if (ST.page === 'scan') rScanLive(); });
+      };
+    });
+}
+async function pdpDelete(id) {
+  const d = ST.D.find(x => x.ID === id); if (!d) return;
+  if (!await confirmBox('Hapus catatan pendamping?', 'Hapus <b>' + esc(d.Nama) + '</b> dari sesi ini?', 'Hapus', true)) return;
+  ST.D = ST.D.filter(x => x !== d); if (ST.page === 'scan') rScanLive(); persistSoon();
+  try { await call('pendamping.delete', { id }); } catch (e) { ST.D.push(d); if (ST.page === 'scan') rScanLive(); toast(e.message, 'err'); }
 }
 
 /* ============================================================
@@ -656,8 +816,8 @@ RENDER.scan = function () {
     '<div class="card card-p"><div class="card-h"><div><h3><i class="bi bi-upc-scan" style="color:var(--pri)"></i> Terminal Pemindai</h3><p>Kamera ponsel atau scanner USB/Bluetooth (Code-128)</p></div><div style="display:flex;gap:.375rem"><button class="btn btn-2 btn-sm btn-ic" data-act="scanSound" aria-label="Suara" id="scSndBtn"><i class="bi bi-volume-up"></i></button></div></div>' +
     '<div class="vf" id="scVf"><div id="camReader" style="position:absolute;inset:0"></div><i class="corner tl"></i><i class="corner tr2"></i><i class="corner bl"></i><i class="corner br"></i><i class="laser"></i><div class="vf-msg" id="scVfMsg"><i class="bi bi-camera-video"></i><div style="margin-bottom:.75rem">Kamera belum aktif</div><button class="btn btn-pri btn-sm" data-act="scanStart"><i class="bi bi-camera-video"></i> Aktifkan Kamera</button></div></div>' +
     '<div class="help" style="margin:.5rem 0 1rem">Arahkan kartu ID tegak lurus, jarak 10–15 cm. Setelah berbunyi “beep”, kehadiran langsung tercatat.</div>' +
-    '<div class="fld" style="margin-bottom:0"><label for="scIn"><i class="bi bi-keyboard"></i> Mode scanner fisik / ketik kode</label><div style="display:flex;gap:.5rem"><input class="input mono" id="scIn" placeholder="Scan barcode atau ketik BS001 lalu Enter" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done"><button class="btn btn-pri" data-act="scanSubmit"><i class="bi bi-check2"></i><span class="sr">Proses</span></button></div></div></div>' +
-    '<div style="display:flex;flex-direction:column;gap:1rem"><div class="res" id="scRes"></div><div class="card card-p" id="scCount"></div></div></div>' +
+    '<div class="fld" style="margin-bottom:0"><label for="scIn"><i class="bi bi-keyboard"></i> Mode scanner fisik / ketik kode</label><div style="display:flex;gap:.5rem"><input class="input mono" id="scIn" placeholder="Scan barcode atau ketik KTP-BS001 lalu Enter" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done"><button class="btn btn-pri" data-act="scanSubmit"><i class="bi bi-check2"></i><span class="sr">Proses</span></button></div></div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:1rem"><div class="res" id="scRes"></div><div class="card card-p" id="scCount"></div><div class="card card-p" id="scPdp"></div></div></div>' +
     '<div class="grid g-s2" style="margin-top:1rem">' +
     '<div class="card card-p"><div class="card-h"><div><h3>Presensi Manual &amp; Keterangan</h3><p>Untuk kartu tertinggal, rusak, atau izin/sakit</p></div></div>' +
     '<form id="mnForm" novalidate><div class="fld"><label for="mnP">Cari nama / kode pengurus *</label><input class="input" id="mnP" list="dlMn" placeholder="Ketik minimal 2 huruf…" autocomplete="off"><datalist id="dlMn"></datalist></div>' +
@@ -689,6 +849,9 @@ function rScanLive() {
     '<div class="prog" style="margin-top:1rem"><div><span class="mono" style="font-size:1.5rem;font-weight:600">' + fmtPct(pct) + '</span> <span class="help">progres hadir</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><span class="chip c-H">Hadir ' + c.h + '</span><span class="chip c-I">Izin ' + c.i + '</span><span class="chip c-S">Sakit ' + c.s + '</span><span class="chip c-N">Menunggu ' + c.wait + '</span></div>';
   $('#scSel').onchange = e => { ST.sc.jadwalId = e.target.value; ST.sc.last = null; ST.sc.bad = []; rScanLive(); renderScanResult(); };
   $('#scCount').innerHTML = '<div class="card-h" style="margin-bottom:.5rem"><div><h3>Ringkasan Sesi</h3><p>' + c.n + ' pengurus aktif</p></div></div><div class="dist"><div><b>' + c.h + '</b>Hadir</div><div><b style="color:var(--gold-d)">' + c.i + '</b>Izin</div><div><b style="color:var(--blue-d)">' + c.s + '</b>Sakit</div><div><b style="color:var(--rose-d)">' + c.wait + '</b>Belum hadir</div></div><div class="help" style="margin-top:.75rem"><i class="bi bi-info-circle"></i> Saat sesi ditutup, pengurus tanpa catatan dihitung <b>Alpa</b> di laporan.</div>';
+  const pd = ST.D.filter(d => d.JadwalID === j.ID).sort((a, b) => String(b.Waktu).localeCompare(String(a.Waktu)));
+  $('#scPdp').innerHTML = '<div class="card-h" style="margin-bottom:.5rem"><div><h3><i class="bi bi-person-raised-hand" style="color:var(--gold-d)"></i> Pendamping Hadir</h3><p>' + pd.length + ' orang · kartu PDP-…</p></div></div>' +
+    (pd.length ? '<div class="bim-l">' + pd.map(d => '<div class="bim-i"><div style="min-width:0"><b>' + esc(d.Nama) + '</b>' + (d._pending ? ' <i class="bi bi-cloud-arrow-up mute"></i>' : '') + '<small class="mute" style="display:block">' + [d.Dapukan, d.Kelompok, d.Desa].filter(Boolean).map(esc).join(' · ') + ' · ' + esc(String(d.Waktu).slice(11, 16)) + '</small></div><button class="btn btn-ghost btn-sm btn-ic" data-act="pdpDel" data-id="' + d.ID + '" aria-label="Hapus"><i class="bi bi-trash"></i></button></div>').join('') + '</div>' : '<div class="help">Belum ada. Pindai kartu pendamping (PDP-001, …) untuk mengisi datanya.</div>');
   // Live log
   const rows = ST.K.filter(k => k.JadwalID === j.ID).sort((a, b) => String(b.Waktu).localeCompare(String(a.Waktu))).slice(0, 40);
   const bad = ST.sc.bad.map(b => '<tr style="background:var(--rose-t)"><td class="first mono" data-l="Waktu">' + esc(b.t) + '</td><td data-l="Pengurus"><b style="color:var(--rose-d)"><i class="bi bi-exclamation-triangle"></i> Tidak dikenal</b></td><td data-l="Kode" class="mono">' + esc(b.code) + '</td><td data-l="Status"><span class="chip c-A">Invalid</span></td><td data-l="Metode" class="mono">Scan</td><td></td></tr>').join('');
@@ -721,6 +884,10 @@ function doScan(raw, metode) {
   const code = String(raw).trim().toUpperCase(), j = ST.jById[ST.sc.jadwalId], time = nowStr().slice(11, 19);
   if (!j) { toast('Pilih sesi terlebih dahulu.', 'warn'); return; }
   if (j.Status === 'Selesai') { toast('Sesi sudah ditutup.', 'warn'); return; }
+  if (isPdpCode(code) && !ST.pByKode[code]) {
+    if (ST.D.some(d => d.JadwalID === j.ID && d.Kode === code)) { beep('dup'); toast('Kartu pendamping ' + code + ' sudah dipakai di sesi ini.', 'warn'); return; }
+    beep('ok'); pdpScanForm(code, j); return;
+  }
   const p = ST.pByKode[code];
   if (!p || p.Aktif === false) {
     ST.sc.last = { type: 'bad', code, time, msg: p ? 'Pengurus tidak aktif.' : '' }; ST.sc.bad.unshift({ t: time, code }); ST.sc.bad = ST.sc.bad.slice(0, 5);
@@ -924,7 +1091,6 @@ RENDER.pengaturan = function () {
       '<div class="card card-p"><div class="card-h"><div><h3>Logo &amp; Nama di ID Card</h3><p>Tampil pada kartu pengurus</p></div></div><form id="cdForm" novalidate>' +
       '<div class="upl fld"><div id="lgPv" class="lg-pv"></div><div><label class="btn btn-2 btn-sm" for="lgFile"><i class="bi bi-image"></i> Pilih Logo</label><input type="file" id="lgFile" accept="image/png,image/jpeg,image/webp" class="sr"> <button type="button" class="btn btn-ghost btn-sm" data-act="logoClear">Hapus logo</button><div class="help" style="margin-top:.375rem">PNG/JPG, otomatis diperkecil. Disimpan di Google Drive.</div></div></div>' +
       '<div class="fld"><label for="cdOrg">Nama pengajian di kartu</label><input class="input" id="cdOrg" value="' + esc(ST.config.CardOrg || '') + '" maxlength="40" placeholder="' + esc(ST.config.AppName) + '"></div>' +
-      '<div class="fld"><label for="cdSub">Keterangan di bawah nama</label><input class="input" id="cdSub" value="' + esc(ST.config.CardSub || '') + '" maxlength="50" placeholder="Pengajian Pengurus"></div>' +
       '<div id="cdPv" class="cd-pv"></div><div class="err" id="cdErr" role="alert"></div><button class="btn btn-pri" type="submit"><i class="bi bi-check2"></i> Simpan Kartu</button></form></div>' +
       '<div class="card card-p"><div class="card-h"><div><h3>Penyimpanan Google</h3><p>Database &amp; berkas tersimpan di akun Anda</p></div></div><div style="display:flex;flex-direction:column;gap:.625rem">' + (ST.links ? '<a class="btn btn-2" href="' + esc(ST.links.sheet) + '" target="_blank" rel="noopener"><i class="bi bi-table"></i> Buka Google Spreadsheet</a><a class="btn btn-2" href="' + esc(ST.links.folder) + '" target="_blank" rel="noopener"><i class="bi bi-folder2-open"></i> Buka Folder Google Drive</a>' : '') + '</div><div class="help" style="margin-top:.75rem">ID Spreadsheet/Folder & rahasia hash disimpan di Script Properties, tidak pernah dikirim ke browser.</div></div>' : '') +
     '</div>' +
@@ -947,7 +1113,7 @@ async function saveConfig(e) {
    ============================================================ */
 let LOGO_NEW = undefined;   // undefined = tak berubah, '' = hapus, 'data:…' = baru
 function cdPreview() {
-  const cfg = Object.assign({}, ST.config, { CardOrg: $('#cdOrg').value.trim(), CardSub: $('#cdSub').value.trim() });
+  const cfg = Object.assign({}, ST.config, { CardOrg: $('#cdOrg').value.trim() });
   if (LOGO_NEW === '') { cfg.LogoID = ''; cfg.LogoData = ''; } else if (LOGO_NEW) cfg.LogoData = LOGO_NEW;
   const lg = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
   $('#lgPv').innerHTML = lg ? '<img alt="Logo" src="' + lg + '">' : '<i class="bi bi-image"></i>';
@@ -956,7 +1122,7 @@ function cdPreview() {
 }
 function initCardForm() {
   LOGO_NEW = undefined; cdPreview();
-  $('#cdOrg').oninput = $('#cdSub').oninput = cdPreview;
+  $('#cdOrg').oninput = cdPreview;
   $('#lgFile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
@@ -975,7 +1141,7 @@ async function saveCard(e) {
   const prev = Object.assign({}, ST.config);
   try {
     if (LOGO_NEW !== undefined) { const r = await call('config.logo', { data: LOGO_NEW }); ST.config.LogoID = r.logoId || ''; }
-    const r2 = await call('config.save', { AppName: ST.config.AppName, Target: ST.config.Target, CardOrg: $('#cdOrg').value.trim(), CardSub: $('#cdSub').value.trim() });
+    const r2 = await call('config.save', { AppName: ST.config.AppName, Target: ST.config.Target, CardOrg: $('#cdOrg').value.trim() });
     ST.config = Object.assign({}, ST.config, { CardOrg: r2.config.CardOrg, CardSub: r2.config.CardSub });
     LOGO_NEW = undefined; persistSoon(); toast('ID Card diperbarui.'); cdPreview();
   } catch (x) { ST.config = prev; er.textContent = x.message; } finally { btn.disabled = false; }
@@ -1068,6 +1234,11 @@ const ACT = {
   addPengurus: () => pengurusForm(), editPengurus: t => pengurusForm(t.dataset.id), delPengurus: t => delPengurus(t.dataset.id),
   togglePengurus: t => togglePengurus(t.dataset.id), regenKode: t => regenKode(t.dataset.id),
   pickPengurus: (t, e) => { if (e.target.closest('input,button,a')) return; ST.pg.cur = t.dataset.id; rPgTable(); if (matchMedia('(max-width:1180px)').matches) $('#pgPreview').scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  cardJpg: t => { const p = ST.pById[t.dataset.id]; if (p) downloadCards([p]); },
+  jpgSelected: () => downloadCards(ST.P.filter(p => ST.pg.sel.has(p.ID))),
+  delSelected: () => delSelected(),
+  pdpCards: () => pdpCardsForm(),
+  pdpDel: t => pdpDelete(t.dataset.id),
   printCard: t => { const p = ST.pById[t.dataset.id]; if (p) printCards([p]); },
   printSelected: () => printCards(ST.P.filter(p => ST.pg.sel.has(p.ID))),
   exportPengurus: () => exportXlsx([{ name: 'Pengurus', rows: [['Kode', 'Nama', 'Tempat Lahir', 'Tanggal Lahir', 'Kelompok', 'Desa', 'Alamat', 'Dapukan', 'No HP', 'Status']].concat(ST.P.map(p => [p.Kode, p.Nama, p.TempatLahir, p.TanggalLahir, p.Kelompok, p.Desa || '', p.Alamat, p.Dapukan, p.NoHP, p.Aktif === false ? 'Nonaktif' : 'Aktif'])) }], 'Data_Pengurus_' + todayStr() + '.xlsx'),
@@ -1112,7 +1283,7 @@ function init() {
   const sess = store.get('np_s'), cache = store.get('np_d');
   if (sess && sess.token && cache && cache.P) {
     ST.token = sess.token; ST.user = sess.user; ST.config = cache.config || ST.config; ST.links = cache.links || null;
-    ST.P = cache.P; ST.J = cache.J; ST.K = cache.K; ST.B = cache.B || []; index(); enterApp(); refresh(true); flushQueue();
+    ST.P = cache.P; ST.J = cache.J; ST.K = cache.K; ST.B = cache.B || []; ST.D = cache.D || []; index(); enterApp(); refresh(true); flushQueue();
   } else if (sess && sess.token) {
     ST.token = sess.token; ST.user = sess.user; showLogin(); $('#lgBtn').disabled = true; $('#lgBtn').innerHTML = '<span class="spin"></span> Memuat…';
     call('bootstrap').then(r => { ingest(r.boot); enterApp(); }).catch(() => { ST.token = null; showLogin(); });
