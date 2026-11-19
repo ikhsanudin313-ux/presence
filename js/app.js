@@ -40,13 +40,14 @@ const store = {
 const ROLE_LABEL = { master: 'Master Admin', penerobos: 'Admin Penerobos', pembina: 'Pembina' };
 let CUR_ROLE = '';
 const isMaster = () => CUR_ROLE === 'master';
+const canAdd = () => CUR_ROLE === 'master' || CUR_ROLE === 'penerobos';
 const canScan = () => CUR_ROLE === 'master' || CUR_ROLE === 'penerobos';
-const cfgOrg = c => (c.CardOrg || c.AppName || 'Noor Presence');
+const cfgOrg = c => (c.CardOrg || c.AppName || 'Absensi Pengajian');
 const tingkatOf = p => (p && p.Tingkat) || 'Daerah';
 
 /* ---------- State ---------- */
 const ST = {
-  token: null, user: null, config: { AppName: 'Noor Presence', Target: 85 }, links: null,
+  token: null, user: null, config: { AppName: 'Absensi Pengajian', Target: 85 }, links: null,
   P: [], J: [], K: [], B: [], D: [], pById: {}, pByKode: {}, jById: {}, kMap: {}, act: [], done: [], noOf: {},
   page: 'dashboard', queue: store.get('np_q') || [], inflight: 0, flushing: false, lastSync: null,
   pg: { page: 1, size: 10, sel: new Set(), cur: null },
@@ -222,7 +223,7 @@ async function doLogout() {
    ============================================================ */
 const MENU = [
   { id: 'dashboard', ic: 'bi-grid-1x2', l: 'Dashboard & Analitik', s: 'Dashboard' },
-  { id: 'pengurus', ic: 'bi-person-vcard', l: 'Data Pengurus & ID Card', s: 'Pengurus', roles: ['master', 'pembina'] },
+  { id: 'pengurus', ic: 'bi-person-vcard', l: 'Data Pengurus & ID Card', s: 'Pengurus', roles: ['master', 'penerobos', 'pembina'] },
   { id: 'scan', ic: 'bi-upc-scan', l: 'Scan Barcode & Presensi', s: 'Scan', roles: ['master', 'penerobos'] },
   { id: 'laporan', ic: 'bi-file-earmark-bar-graph', l: 'Laporan & Rekapitulasi', s: 'Laporan' },
   { id: 'jadwal', ic: 'bi-calendar-event', l: 'Jadwal Pengajian', s: 'Jadwal' },
@@ -251,10 +252,17 @@ function navigate(id) {
   window.scrollTo(0, 0);
 }
 function closeSheet() { $('#mSheet').classList.remove('on'); $('#sheetBg').classList.remove('on'); }
+function applyBrand() {
+  const c = ST.config || {}, src = c.LogoData || (c.LogoID ? 'https://lh3.googleusercontent.com/d/' + c.LogoID + '=w160' : '');
+  $$('.brand-mark').forEach(m => {
+    if (!m.dataset.def) m.dataset.def = m.innerHTML;
+    if (src) { m.classList.add('has-img'); m.innerHTML = '<img alt="" src="' + esc(src) + '">'; } else { m.classList.remove('has-img'); m.innerHTML = m.dataset.def; }
+  });
+}
 function enterApp() {
   $('#splash').classList.add('hide'); window.__npReady = true;
   $('#login').classList.add('hide'); $('#app').classList.remove('hide');
-  $$('.appname').forEach(e => { e.textContent = ST.config.AppName || 'Noor Presence'; });
+  $$('.appname').forEach(e => { e.textContent = ST.config.AppName || 'Absensi Pengajian'; }); applyBrand(); document.title = (ST.config.AppName || 'Absensi Pengajian') + ' — Absensi Pengajian';
   CUR_ROLE = ST.user.peran; $('.btn-scan-t').classList.toggle('hide', !canScan()); $('#uName').textContent = ST.user.nama; $('#uRole').textContent = ROLE_LABEL[ST.user.peran] || ST.user.peran;
   $('#uAv').textContent = initials(ST.user.nama);
   $('#topSearchWrap').classList.toggle('hide', !(isMaster() || ST.user.peran === 'pembina'));
@@ -365,7 +373,7 @@ function pgFiltered() {
 }
 const uniq = (arr, k) => Array.from(new Set(arr.map(x => x[k]).filter(Boolean))).sort();
 RENDER.pengurus = function () {
-  ['addPengurus', 'printSelected', 'jpgSelected', 'delSelected', 'pdpCards'].forEach(a => { const b = $('[data-act=' + a + ']'); if (b) b.classList.toggle('hide', !isMaster()); });
+  ['addPengurus', 'printSelected', 'backCards', 'jpgSelected', 'delSelected', 'pdpCards'].forEach(a => { const b = $('[data-act=' + a + ']'); if (b) b.classList.toggle('hide', a === 'addPengurus' ? !canAdd() : !isMaster()); });
   const kel = uniq(ST.P, 'Kelompok'), dap = uniq(ST.P, 'Dapukan');
   const sel = (id, def, list) => { const cur = $(id).value; $(id).innerHTML = '<option value="">' + def + '</option>' + list.map(x => '<option>' + esc(x) + '</option>').join(''); $(id).value = list.indexOf(cur) >= 0 ? cur : ''; };
   sel('#fgKel', 'Semua Kelompok', kel); sel('#fgDap', 'Semua Dapukan', dap);
@@ -384,14 +392,14 @@ function rPgTable() {
   if (!ST.pg.cur || !ST.pById[ST.pg.cur]) ST.pg.cur = list[0] ? list[0].ID : null;
   const allSel = list.length && list.every(p => ST.pg.sel.has(p.ID));
   const ed = isMaster();
-  $('#fgInfo').textContent = 'Menampilkan ' + list.length + ' pengurus' + (ed ? ' · ' + ST.pg.sel.size + ' dipilih untuk cetak' : ' · mode lihat saja');
+  $('#fgInfo').textContent = 'Menampilkan ' + list.length + ' pengurus' + (ed ? ' · ' + ST.pg.sel.size + ' dipilih untuk cetak' : CUR_ROLE === 'penerobos' ? ' · Anda dapat menambah pengurus baru' : ' · mode lihat saja');
   $('#pgTable').innerHTML =
     '<thead><tr>' + (ed ? '<th style="width:44px"><input type="checkbox" data-chg="selAll" ' + (allSel ? 'checked' : '') + ' aria-label="Pilih semua"></th>' : '') + '<th>Pengurus</th><th>ID Barcode</th><th>Dapukan &amp; Kelompok</th><th>Kontak</th><th>Kehadiran</th>' + (ed ? '<th style="width:120px"></th>' : '') + '</tr></thead><tbody>' +
     (rows.length ? rows.map(p => {
       const s = pStats(p.ID, ST.done);
       return '<tr class="clk ' + (ST.pg.cur === p.ID ? 'sel' : '') + '" data-act="pickPengurus" data-id="' + p.ID + '">' +
         (ed ? '<td class="first" style="width:44px"><input type="checkbox" data-chg="selRow" data-id="' + p.ID + '" ' + (ST.pg.sel.has(p.ID) ? 'checked' : '') + ' aria-label="Pilih ' + esc(p.Nama) + '"></td>' : '') +
-        '<td class="first"><div class="who">' + avatarHTML(p) + '<div style="min-width:0"><b>' + esc(p.Nama) + '</b><small>' + (p.Aktif === false ? '<span class="chip c-A nodot" style="padding:0 .4rem">Nonaktif</span> ' : '') + esc((p.TempatLahir ? p.TempatLahir + ', ' : '') + (dObj(p.TanggalLahir) ? fmtTgl(p.TanggalLahir, true) : '')) + '</small></div></div></td>' +
+        '<td class="first"><div class="who">' + avatarHTML(p) + '<div style="min-width:0"><b>' + esc(p.Nama) + '</b><small>' + (p.Aktif === false ? '<span class="chip c-A nodot" style="padding:0 .4rem">Nonaktif</span> ' : '') + esc((p.TempatLahir ? p.TempatLahir + ', ' : '') + (dObj(p.TanggalLahir) ? fmtTgl(p.TanggalLahir, true) + ' · ' + umurOf(p.TanggalLahir) + ' th' : '')) + '</small></div></div></td>' +
         '<td data-l="Barcode"><span class="mono chip c-S nodot" style="padding:.1rem .5rem">' + esc(p.Kode) + '</span></td>' +
         '<td data-l="Dapukan"><div style="text-align:inherit"><b style="font-weight:600">' + esc(p.Dapukan) + '</b><small class="mute" style="display:block">Kelompok ' + esc(p.Kelompok) + (p.Desa ? ' · ' + esc(p.Desa) : '') + '</small></div></td>' +
         '<td data-l="Kontak" class="mono">' + esc(p.NoHP || '—') + '</td>' +
@@ -405,6 +413,8 @@ function rPgTable() {
   nav += pb(ST.pg.page + 1, '<i class="bi bi-chevron-right"></i>', false, ST.pg.page >= pages);
   $('#pgNav').innerHTML = nav; rPgPreview();
 }
+const umurOf = s => { const d = dObj(s); if (!d) return ''; const n = new Date(); let u = n.getFullYear() - d.getFullYear(); if (n.getMonth() < d.getMonth() || (n.getMonth() === d.getMonth() && n.getDate() < d.getDate())) u--; return u >= 0 && u < 130 ? u : ''; };
+const ttlText = p => { const t = [p.TempatLahir, tglLahir(p.TanggalLahir)].filter(Boolean).join(', '), u = umurOf(p.TanggalLahir); return (t || '—') + (u !== '' ? ' (' + u + ' th)' : ''); };
 const tglLahir = s => { const d = dObj(s); return d ? d.getDate() + ' ' + BULAN[d.getMonth()] + ' ' + d.getFullYear() : ''; };
 const PF_CUT = 8, PF_RING = 3, PF_PAD = 4, PF_MAXW = 98, PF_MAXH = 86;      // bingkai foto: emas 3px + putih 4px
 function fitPf(img) {                                                       // bingkai mengikuti rasio foto (tanpa potong)
@@ -416,19 +426,19 @@ const SILH = '<svg viewBox="0 0 64 86" width="64" height="86" aria-hidden="true"
 function cardHTML(p, cfg) {
   cfg = cfg || ST.config;
   const pdp = !!p._pdp, hasImg = !pdp && !!p.FotoID;
-  const ttl = [p.TempatLahir, tglLahir(p.TanggalLahir)].filter(Boolean).join(', ') || '—';
+  const ttl = ttlText(p);
   const moon = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15.5 3.2a9 9 0 1 0 5.3 13.9A7.5 7.5 0 0 1 15.5 3.2z" fill="#FBBF24"/><path d="M18.6 4.6l.7 1.6 1.7.2-1.3 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.3-1.1 1.7-.2z" fill="#FBBF24"/></svg>';
   const logoSrc = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
   const title = pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase();
   const photo = hasImg ? '<img alt="" style="visibility:hidden" onload="fitPf(this)" src="https://lh3.googleusercontent.com/d/' + esc(p.FotoID) + '=w480">'
     : pdp ? SILH : '<div class="phd">' + esc(initials(p.Nama)) + '</div>';
-  const rows = pdp ? [['Nama', ''], ['Kelompok', ''], ['Desa', ''], ['Dapukan', '']]
+  const rows = pdp ? [['Kelompok', ''], ['Desa', '']]
     : [['TTL', ttl], ['Kelompok', p.Kelompok]].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
   return '<div class="idc"><div class="idc-top"></div><div class="idc-wave"></div><div class="idc-in">' +
     '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">' + title + '</div>' +
     '<div class="idc-hx"><div class="pf"><div class="pi">' + photo + '</div></div></div>' +
-    '<div class="idc-n">' + (pdp ? 'PENDAMPING' : esc(p.Nama)) + '</div><div class="idc-d">' + (pdp ? 'Tamu / Pendamping Pengajian' : esc(p.Dapukan)) + '</div>' +
-    '<div class="idc-i">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
+    '<div class="idc-n">' + (pdp ? 'PENDAMPING' : esc(p.Nama)) + '</div>' + (pdp ? '' : '<div class="idc-d">' + esc(p.Dapukan) + '</div>') +
+    '<div class="idc-i' + (pdp ? ' pd' : '') + '">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
     '<div class="idc-b"><svg class="bc" data-code="' + esc(p.Kode) + '"></svg><div>' + esc(p.Kode) + '</div></div></div></div>';
 }
 
@@ -482,15 +492,15 @@ async function drawCardCanvas(p, cfg) {
   const nl = wrapText(x, nm, 192, 2), ny = 179.5 - (nl.length - 1) * 6.9;
   nl.forEach((l, i) => txt(l, 108, ny + i * 13.8, '800 12px ' + FF, '#B45309'));
   const dy = ny + (nl.length - 1) * 13.8 + 14;
-  x.font = '700 8px ' + FF; let dp = pdp ? 'Tamu / Pendamping Pengajian' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
-  txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
-  const ttl = [p.TempatLahir, tglLahir(p.TanggalLahir)].filter(Boolean).join(', ') || '—';
-  const rows = pdp ? [['Nama', ''], ['Kelompok', ''], ['Desa', ''], ['Dapukan', '']] : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
-  x.font = '600 7.3px ' + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
-  let ry = dy + 12;
+  x.font = '700 8px ' + FF; let dp = pdp ? '' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
+  if (!pdp) txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
+  const ttl = ttlText(p);
+  const rows = pdp ? [['Kelompok', ''], ['Desa', '']] : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
+  x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
+  let ry = pdp ? dy + 10 : dy + 12;
   rows.forEach(r => {
-    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '600 7.3px ' + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
-    if (pdp) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 8.5); x.lineTo(200, ry + 8.5); x.stroke(); x.setLineDash([]); ry += 14; }
+    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
+    if (pdp) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 9.5); x.lineTo(200, ry + 9.5); x.stroke(); x.setLineDash([]); ry += 25; }
     else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += ls.length * 9.86 + 2; }
   });
   const bc = code128(String(p.Kode)), bw = 169, k = bw / bc.w, bx = (W - bw) / 2, by = 292; x.fillStyle = '#000';
@@ -500,6 +510,60 @@ async function drawCardCanvas(p, cfg) {
 }
 function saveCanvasJpg(cv, name) {
   return new Promise(res => cv.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); res(); }, 1200); }, 'image/jpeg', .95));
+}
+
+/* ---------- Kartu BELAKANG (sama untuk semua orang) ---------- */
+const BACK_RULES = ['Kartu ini adalah identitas pengurus dan wajib dibawa setiap pengajian.', 'Tunjukkan kartu atau pindai barcode pada petugas untuk mencatat kehadiran.', 'Kartu bersifat pribadi, tidak boleh dipinjamkan atau digandakan.', 'Jaga kartu dari air, lipatan, dan goresan agar barcode tetap terbaca.', 'Jika kartu hilang atau rusak, segera lapor ke admin untuk dicetak ulang.'];
+function backHTML(cfg) {
+  cfg = cfg || ST.config;
+  const moon = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15.5 3.2a9 9 0 1 0 5.3 13.9A7.5 7.5 0 0 1 15.5 3.2z" fill="#FBBF24"/><path d="M18.6 4.6l.7 1.6 1.7.2-1.3 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.3-1.1 1.7-.2z" fill="#FBBF24"/></svg>';
+  const logoSrc = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
+  return '<div class="idc"><div class="idc-top"></div><div class="idc-wave"></div><div class="idc-in">' +
+    '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">KETENTUAN KARTU</div>' +
+    '<div class="idb-t">KETENTUAN PENGGUNAAN</div><ol class="idb-l">' + BACK_RULES.map(r => '<li>' + esc(r) + '</li>').join('') + '</ol>' +
+    '<div class="idb-f"><b>Jika kartu ini ditemukan</b>mohon dikembalikan kepada pengurus ' + esc(cfgOrg(cfg)) + '. Terima kasih.</div></div></div>';
+}
+async function drawBackCanvas(cfg) {
+  cfg = cfg || ST.config; const S = 6, W = 216, H = 344, FF = '"Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif';
+  try { await Promise.all(['800 9px', '700 8px', '600 7px'].map(f => document.fonts.load(f + ' "Plus Jakarta Sans"'))); } catch (e) { }
+  const logo = cfg.LogoData ? await imgFromSrc(cfg.LogoData).catch(() => null) : (cfg.LogoID ? await imgFromId(cfg.LogoID).catch(() => null) : null);
+  const cv = document.createElement('canvas'); cv.width = W * S; cv.height = H * S; const x = cv.getContext('2d'); x.scale(S, S);
+  const txt = (t, cx, cy, font, color) => { x.font = font; x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, cx, cy); };
+  x.save(); x.beginPath(); x.roundRect(0, 0, W, H, 14); x.clip();
+  let g = x.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#EEF3F0'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+  g = x.createLinearGradient(-16, 0, 232, 128); g.addColorStop(0, '#166534'); g.addColorStop(.55, '#14532D'); g.addColorStop(1, '#064E3B'); x.fillStyle = g;
+  x.beginPath(); x.moveTo(-16, 0); x.lineTo(232, 0); x.lineTo(232, 128 - 56.3); x.ellipse(108, 128 - 56.3, 124, 56.3, 0, 0, Math.PI, false); x.closePath(); x.fill();
+  g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, '#B45309'); g.addColorStop(.5, '#F59E0B'); g.addColorStop(1, '#B45309'); x.fillStyle = g; x.fillRect(0, H - 5, W, 5);
+  x.restore();
+  x.strokeStyle = '#E2E8F0'; x.lineWidth = .5; x.beginPath(); x.roundRect(.25, .25, W - .5, H - .5, 14); x.stroke();
+  x.beginPath(); x.arc(108, 23, 14, 0, 7); x.fillStyle = logo ? '#fff' : 'rgba(0,0,0,.14)'; x.fill(); x.lineWidth = 2; x.strokeStyle = '#F59E0B'; x.stroke();
+  if (logo) { x.save(); x.beginPath(); x.arc(108, 23, 13, 0, 7); x.clip(); const sc = Math.min(26 / logo.width, 26 / logo.height); x.drawImage(logo, 108 - logo.width * sc / 2, 23 - logo.height * sc / 2, logo.width * sc, logo.height * sc); x.restore(); }
+  else { x.fillStyle = '#FBBF24'; x.beginPath(); x.arc(107, 23, 6.5, 0, 7); x.fill(); x.fillStyle = '#14532D'; x.beginPath(); x.arc(110, 21, 5.6, 0, 7); x.fill(); }
+  let org = cfgOrg(cfg).toUpperCase(); x.font = '800 9px ' + FF; while (org.length > 3 && x.measureText(org).width > 190) org = org.slice(0, -1);
+  txt(org, 108, 45.5, '800 9px ' + FF, '#FBBF24'); txt('KETENTUAN KARTU', 108, 56, '600 6.5px ' + FF, '#FFFFFF');
+  txt('KETENTUAN PENGGUNAAN', 108, 139, '800 8.5px ' + FF, '#14532D');
+  let y = 151; x.textAlign = 'left'; x.textBaseline = 'top';
+  BACK_RULES.forEach((r, i) => {
+    x.fillStyle = '#F59E0B'; x.beginPath(); x.arc(21.5, y + 5, 4.5, 0, 7); x.fill(); txt(String(i + 1), 21.5, y + 5.3, '800 6px ' + FF, '#fff');
+    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '500 7.2px ' + FF; x.fillStyle = '#1E293B';
+    const ls = wrapText(x, r, 170, 4); ls.forEach((l, k) => x.fillText(l, 31, y + k * 9.9)); y += ls.length * 9.9 + 5.5;
+  });
+  x.strokeStyle = '#CBD5E1'; x.setLineDash([2, 2]); x.lineWidth = .6; x.beginPath(); x.moveTo(12, 296); x.lineTo(204, 296); x.stroke(); x.setLineDash([]);
+  txt('Jika kartu ini ditemukan', 108, 305, '800 7.4px ' + FF, '#B45309');
+  x.font = '500 6.6px ' + FF; wrapText(x, 'mohon dikembalikan kepada pengurus ' + cfgOrg(cfg) + '. Terima kasih.', 190, 2).forEach((l, i) => txt(l, 108, 315 + i * 9, '500 6.6px ' + FF, '#334155'));
+  return cv;
+}
+function backCardsForm() {
+  openModal('<div class="modal-h"><h3>Kartu Belakang</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
+    '<p class="ink2" style="margin-bottom:1rem">Sisi belakang sama untuk semua kartu. Cetak di sisi balik kertas yang sudah berisi kartu depan (cetak bolak-balik), atau unduh sebagai JPG.</p>' +
+    '<div class="fld"><label for="bkN">Jumlah kartu per lembar</label><input class="input" id="bkN" type="number" min="1" max="10" value="10"><div class="help">10 kartu = 1 lembar A4 penuh. Isi sesuai jumlah kartu depan pada lembar tersebut.</div></div>' +
+    '<div id="bkPv" style="display:flex;justify-content:center;margin-top:.5rem"></div></div>' +
+    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="bkJpg"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button type="button" class="btn btn-pri" id="bkPrint"><i class="bi bi-printer"></i> Cetak</button></div>',
+    box => {
+      $('#bkPv', box).innerHTML = backHTML();
+      $('#bkPrint', box).onclick = () => { const n = Math.max(1, Math.min(10, +$('#bkN', box).value || 10)); closeModal(); doPrint('<div class="pcards">' + Array.from({ length: n }, () => '<div class="pcell">' + backHTML() + '</div>').join('') + '</div>'); };
+      $('#bkJpg', box).onclick = async () => { try { toast('Menyiapkan JPG…'); await saveCanvasJpg(await drawBackCanvas(), 'IDCard_Belakang.jpg'); } catch (e) { toast('Gagal membuat JPG: ' + e.message, 'err'); } };
+    });
 }
 const safeName = t => String(t || 'kartu').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 40) || 'kartu';
 async function downloadCards(list) {
@@ -530,8 +594,8 @@ function drawBarcodes(root) {
 function rPgPreview() {
   const p = ST.pById[ST.pg.cur], box = $('#pgPreview');
   if (!p) { box.innerHTML = '<div class="empty"><i class="bi bi-person-vcard"></i>Pilih pengurus untuk melihat pratinjau kartu.</div>'; return; }
-  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) + (!isMaster() ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
-    (!isMaster() ? '' : '<div class="pv-acts"><div class="row c2"><button class="btn btn-pri" data-act="printCard" data-id="' + p.ID + '"><i class="bi bi-printer"></i> Cetak</button><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div>' +
+  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) + (CUR_ROLE === 'penerobos' ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div>' : !isMaster() ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
+    (!isMaster() ? '' : '<div class="pv-acts"><div class="row c2"><button class="btn btn-pri" data-act="printCard" data-id="' + p.ID + '"><i class="bi bi-printer"></i> Cetak</button><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div><button class="btn btn-2" data-act="backCards"><i class="bi bi-credit-card-2-back"></i> Kartu Belakang</button>' +
     '<div class="row c2"><button class="btn btn-2" data-act="editPengurus" data-id="' + p.ID + '"><i class="bi bi-pencil"></i> Ubah</button><button class="btn btn-2" data-act="regenKode" data-id="' + p.ID + '"><i class="bi bi-arrow-repeat"></i> Barcode Baru</button></div>' +
     '<div class="row c2"><button class="btn btn-2" data-act="togglePengurus" data-id="' + p.ID + '"><i class="bi bi-' + (p.Aktif === false ? 'toggle-off' : 'toggle-on') + '"></i> ' + (p.Aktif === false ? 'Aktifkan' : 'Nonaktifkan') + '</button><button class="btn btn-danger" data-act="delPengurus" data-id="' + p.ID + '"><i class="bi bi-trash"></i> Hapus</button></div></div>');
   drawBarcodes(box);
@@ -571,7 +635,7 @@ function pengurusForm(id) {
     '<form id="fPg" novalidate><div class="modal-b">' +
     '<div class="upl fld"><div id="fPhotoPv">' + (p ? avatarHTML(p, 'big-av') : '<div class="big-av"><i class="bi bi-camera"></i></div>') + '</div><div><label class="btn btn-2 btn-sm" for="fPhoto"><i class="bi bi-image"></i> Pilih Foto</label><input type="file" id="fPhoto" accept="image/*" class="sr"><div class="help" style="margin-top:.375rem">Foto tampil utuh &amp; di tengah pada ID Card (tidak dipotong).</div></div></div>' +
     '<div class="fld"><label for="fNama">Nama lengkap *</label><input class="input" id="fNama" value="' + v('Nama') + '" maxlength="80" required></div>' +
-    '<div class="row c2"><div class="fld"><label for="fTmp">Tempat lahir</label><input class="input" id="fTmp" value="' + v('TempatLahir') + '" maxlength="60"></div><div class="fld"><label for="fTgl">Tanggal lahir</label><input class="input" id="fTgl" type="date" value="' + v('TanggalLahir') + '"></div></div>' +
+    '<div class="row c2"><div class="fld"><label for="fTmp">Tempat lahir</label><input class="input" id="fTmp" value="' + v('TempatLahir') + '" maxlength="60"></div><div class="fld"><label for="fTgl">Tanggal lahir</label><input class="input" id="fTgl" type="date" value="' + v('TanggalLahir') + '"><div class="help" id="fUmur"></div></div></div>' +
     '<div class="fld"><label for="fKel">Kelompok *</label><input class="input" id="fKel" list="dlKel" value="' + v('Kelompok') + '" maxlength="40" required></div>' +
     '<div class="fld"><label for="fDesa">Desa</label><input class="input" id="fDesa" list="dlDesa" value="' + v('Desa') + '" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
     '<div class="fld"><label for="fDap">Dapukan *</label><input class="input" id="fDap" list="dlDap" value="' + v('Dapukan') + '" maxlength="60" required></div>' +
@@ -582,6 +646,7 @@ function pengurusForm(id) {
     '<div class="err" id="fErr" role="alert"></div></div>' +
     '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Batal</button><button type="submit" class="btn btn-pri"><i class="bi bi-check2"></i> Simpan</button></div></form>',
     box => {
+      const tg = $('#fTgl', box), up = () => { const u = umurOf(tg.value); $('#fUmur', box).textContent = u !== '' ? 'Umur: ' + u + ' tahun' : ''; }; tg.oninput = tg.onchange = up; up();
       $('#fPhoto', box).onchange = async e => {
         const f = e.target.files[0]; if (!f) return;
         try { photo = await compressPhoto(f); $('#fPhotoPv', box).innerHTML = '<div class="big-av" style="border-radius:50%"><img alt="" src="' + photo + '"></div>'; } catch (er) { $('#fErr', box).textContent = er.message; }
@@ -1104,7 +1169,7 @@ async function changePass(e) {
   try { await call('pass.change', { old: o, nw: n }); toast('Kata sandi diperbarui.'); $('#pwForm').reset(); } catch (x) { er.textContent = x.message; }
 }
 async function saveConfig(e) {
-  e.preventDefault(); const prev = Object.assign({}, ST.config); ST.config = Object.assign({}, prev, { AppName: $('#cfNama').value.trim() || 'Noor Presence', Target: Math.max(1, Math.min(100, +$('#cfTgt').value || 85)) });
+  e.preventDefault(); const prev = Object.assign({}, ST.config); ST.config = Object.assign({}, prev, { AppName: $('#cfNama').value.trim() || 'Absensi Pengajian', Target: Math.max(1, Math.min(100, +$('#cfTgt').value || 85)) });
   $$('.appname').forEach(x => { x.textContent = ST.config.AppName; }); persistSoon(); toast('Pengaturan disimpan.');
   try { await call('config.save', { AppName: ST.config.AppName, Target: ST.config.Target, CardOrg: ST.config.CardOrg || '', CardSub: ST.config.CardSub || '' }); } catch (x) { ST.config = prev; $$('.appname').forEach(y => { y.textContent = prev.AppName; }); toast('Gagal: ' + x.message, 'err'); }
 }
@@ -1143,7 +1208,7 @@ async function saveCard(e) {
     if (LOGO_NEW !== undefined) { const r = await call('config.logo', { data: LOGO_NEW }); ST.config.LogoID = r.logoId || ''; }
     const r2 = await call('config.save', { AppName: ST.config.AppName, Target: ST.config.Target, CardOrg: $('#cdOrg').value.trim() });
     ST.config = Object.assign({}, ST.config, { CardOrg: r2.config.CardOrg, CardSub: r2.config.CardSub });
-    LOGO_NEW = undefined; persistSoon(); toast('ID Card diperbarui.'); cdPreview();
+    LOGO_NEW = undefined; persistSoon(); applyBrand(); toast('ID Card diperbarui.'); cdPreview();
   } catch (x) { ST.config = prev; er.textContent = x.message; } finally { btn.disabled = false; }
 }
 
@@ -1235,6 +1300,7 @@ const ACT = {
   togglePengurus: t => togglePengurus(t.dataset.id), regenKode: t => regenKode(t.dataset.id),
   pickPengurus: (t, e) => { if (e.target.closest('input,button,a')) return; ST.pg.cur = t.dataset.id; rPgTable(); if (matchMedia('(max-width:1180px)').matches) $('#pgPreview').scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   cardJpg: t => { const p = ST.pById[t.dataset.id]; if (p) downloadCards([p]); },
+  backCards: () => backCardsForm(),
   jpgSelected: () => downloadCards(ST.P.filter(p => ST.pg.sel.has(p.ID))),
   delSelected: () => delSelected(),
   pdpCards: () => pdpCardsForm(),

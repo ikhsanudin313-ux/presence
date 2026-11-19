@@ -18,3 +18,6 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Unduh JPG: tombol di pratinjau kartu, atau centang beberapa pengurus lalu "JPG Terpilih".
 - Kartu Pendamping (PDP-001 dst): cetak/unduh dari tombol "Kartu Pendamping". Saat dipindai di sesi aktif, muncul isian Nama, Kelompok, Desa, Dapukan. Pendamping belum masuk Laporan.
 - Hapus: ikon hapus per baris, atau "Hapus Terpilih". Yang punya riwayat kehadiran ditanya ulang sebelum dihapus beserta riwayatnya.
+- Umur otomatis dari tanggal lahir (di kartu, tabel, dan form).
+- Logo di sidebar mengikuti logo yang diunggah di Pengaturan → ID Card.
+- Kartu Belakang: tombol "Cetak Belakang" / "Kartu Belakang" (cetak atau JPG).

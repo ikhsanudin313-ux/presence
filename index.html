@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#059669">
-  <title>Noor Presence — Absensi Pengajian Pengurus</title>
+  <title>Absensi Pengajian Pengurus</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%23059669%27/%3E%3Cpath d=%27M19 6a10 10 0 1 0 7 17A8 8 0 0 1 19 6z%27 fill=%27%23FBBF24%27/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -16,8 +16,8 @@
 <main id="login" class="hide">
   <form class="login-card" id="loginForm" autocomplete="on" novalidate>
     <div class="logo">
-      <div class="logo-mark"><i class="bi bi-moon-stars-fill"></i></div>
-      <div><b class="appname">Noor Presence</b><small>Absensi Pengajian Pengurus</small></div>
+      <div class="logo-mark brand-mark"><i class="bi bi-moon-stars-fill"></i></div>
+      <div><b class="appname">Absensi Pengajian</b><small>Absensi Pengajian Pengurus</small></div>
     </div>
     <h1>Assalamu'alaikum</h1>
     <p class="ink2" style="margin-bottom:1.25rem">Masuk untuk mengelola jadwal, kehadiran, dan ID Card pengurus.</p>
@@ -41,8 +41,8 @@
   <!-- Sidebar (desktop & dock tablet) -->
   <aside class="sidebar" id="sidebar" aria-label="Navigasi utama">
     <div class="logo">
-      <div class="logo-mark"><i class="bi bi-moon-stars-fill"></i></div>
-      <div><b class="appname">Noor Presence</b><small>Absensi Pengajian</small></div>
+      <div class="logo-mark brand-mark"><i class="bi bi-moon-stars-fill"></i></div>
+      <div><b class="appname">Absensi Pengajian</b><small>Absensi Pengajian</small></div>
     </div>
     <div class="nav-t">NAVIGASI UTAMA</div>
     <nav class="nav" id="navSide"></nav>
@@ -55,7 +55,7 @@
 
   <div class="main">
     <header class="topbar">
-      <div class="logo logo-m"><div class="logo-mark" style="width:36px;height:36px;font-size:1.1rem"><i class="bi bi-moon-stars-fill"></i></div></div>
+      <div class="logo logo-m"><div class="logo-mark brand-mark" style="width:36px;height:36px;font-size:1.1rem"><i class="bi bi-moon-stars-fill"></i></div></div>
       <div class="input-ic search" id="topSearchWrap"><i class="bi bi-search"></i><input class="input" id="topSearch" placeholder="Cari pengurus, no ID, dapukan…" style="height:2.5rem"></div>
       <div class="sync" id="syncPill" title="Status sinkronisasi"><span class="dot"></span><span class="st" id="syncTxt">Tersambung ke Google Sheets</span></div>
       <div class="top-sp"></div>
@@ -79,6 +79,7 @@
             <p>Kelola biodata, dapukan, barcode otomatis, dan cetak kartu pengurus siap pakai.</p></div>
           <div class="acts">
             <button class="btn btn-2" data-act="exportPengurus"><i class="bi bi-file-earmark-spreadsheet"></i> Ekspor</button>
+            <button class="btn btn-2" data-act="backCards"><i class="bi bi-credit-card-2-back"></i> Cetak Belakang</button>
             <button class="btn btn-2" data-act="pdpCards"><i class="bi bi-person-raised-hand"></i> Kartu Pendamping</button>
             <button class="btn btn-2" data-act="jpgSelected"><i class="bi bi-file-earmark-image"></i> JPG Terpilih</button>
             <button class="btn btn-gold" data-act="printSelected"><i class="bi bi-printer"></i> Cetak Massal ID Card</button>
