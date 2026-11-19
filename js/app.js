@@ -432,13 +432,13 @@ function cardHTML(p, cfg) {
   const title = pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase();
   const photo = hasImg ? '<img alt="" style="visibility:hidden" onload="fitPf(this)" src="https://lh3.googleusercontent.com/d/' + esc(p.FotoID) + '=w480">'
     : pdp ? SILH : '<div class="phd">' + esc(initials(p.Nama)) + '</div>';
-  const rows = pdp ? [['Kelompok', ''], ['Desa', '']]
+  const rows = pdp ? pdpRows(p)
     : [['TTL', ttl], ['Kelompok', p.Kelompok]].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
   return '<div class="idc"><div class="idc-top"></div><div class="idc-wave"></div><div class="idc-in">' +
     '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">' + title + '</div>' +
     '<div class="idc-hx"><div class="pf"><div class="pi">' + photo + '</div></div></div>' +
-    '<div class="idc-n">' + (pdp ? 'PENDAMPING' : esc(p.Nama)) + '</div>' + (pdp ? '' : '<div class="idc-d">' + esc(p.Dapukan) + '</div>') +
-    '<div class="idc-i' + (pdp ? ' pd' : '') + '">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
+    '<div class="idc-n">' + (pdp ? pdpTitle(p) : esc(p.Nama)) + '</div>' + (pdp ? '' : '<div class="idc-d">' + esc(p.Dapukan) + '</div>') +
+    '<div class="idc-i' + (pdp ? ' pd' : '') + '">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp && !r[1] ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
     '<div class="idc-b"><svg class="bc" data-code="' + esc(p.Kode) + '"></svg><div>' + esc(p.Kode) + '</div></div></div></div>';
 }
 
@@ -488,20 +488,20 @@ async function drawCardCanvas(p, cfg) {
   if (photo) x.drawImage(photo, ix, iy, iw, ih);
   else if (pdp) { x.fillStyle = '#E2EAE6'; x.fillRect(ix, iy, iw, ih); x.fillStyle = '#94A9A0'; x.beginPath(); x.arc(ix + iw / 2, iy + 32, 14, 0, 7); x.fill(); x.beginPath(); x.moveTo(ix + 6, iy + ih); x.bezierCurveTo(ix + 8, iy + 64, ix + 20, iy + 56, ix + iw / 2, iy + 56); x.bezierCurveTo(ix + iw - 20, iy + 56, ix + iw - 8, iy + 64, ix + iw - 6, iy + ih); x.fill(); }
   else { x.fillStyle = '#065F46'; x.fillRect(ix, iy, iw, ih); txt(initials(p.Nama), ix + iw / 2, iy + ih / 2, '700 26px ' + FF, '#fff'); }
-  const nm = pdp ? 'PENDAMPING' : String(p.Nama || '').toUpperCase(); x.font = '800 12px ' + FF;
+  const nm = pdp ? pdpTitle(p) : String(p.Nama || '').toUpperCase(); x.font = '800 12px ' + FF;
   const nl = wrapText(x, nm, 192, 2), ny = 179.5 - (nl.length - 1) * 6.9;
   nl.forEach((l, i) => txt(l, 108, ny + i * 13.8, '800 12px ' + FF, '#B45309'));
   const dy = ny + (nl.length - 1) * 13.8 + 14;
   x.font = '700 8px ' + FF; let dp = pdp ? '' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
   if (!pdp) txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
   const ttl = ttlText(p);
-  const rows = pdp ? [['Kelompok', ''], ['Desa', '']] : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
+  const rows = pdp ? pdpRows(p) : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
   x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
   let ry = pdp ? dy + 10 : dy + 12;
   rows.forEach(r => {
     x.textAlign = 'left'; x.textBaseline = 'top'; x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
-    if (pdp) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 9.5); x.lineTo(200, ry + 9.5); x.stroke(); x.setLineDash([]); ry += 25; }
-    else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += ls.length * 9.86 + 2; }
+    if (pdp && !r[1]) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 9.5); x.lineTo(200, ry + 9.5); x.stroke(); x.setLineDash([]); ry += 25; }
+    else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += pdp ? 25 : ls.length * 9.86 + 2; }
   });
   const bc = code128(String(p.Kode)), bw = 169, k = bw / bc.w, bx = (W - bw) / 2, by = 292; x.fillStyle = '#000';
   const re = /M(\d+) 0h(\d+)/g; let m; while ((m = re.exec(bc.d))) x.fillRect(bx + (+m[1]) * k, by, (+m[2]) * k, 28);
@@ -741,18 +741,24 @@ async function exportXlsx(sheets, filename) {
    PENDAMPING: kartu umum PDP-001… ; saat dipindai muncul isian data
    ============================================================ */
 const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
-const pdpCard = n => ({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: 'Pendamping' });
+const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: 'Pendamping', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
+const pdpTitle = p => 'PENDAMPING ' + String(p.Jenis === 'Desa' ? 'DESA' : 'KELOMPOK');
+const pdpRows = p => p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
 function nextPdpNo() { let m = 0; ST.D.forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
 function pdpCardsForm() {
   openModal('<div class="modal-h"><h3>Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
-    '<p class="ink2" style="margin-bottom:1rem">Kartu umum tanpa nama. Saat dipindai pada sesi pengajian, aplikasi meminta pendamping mengisi <b>Nama, Kelompok, Desa, dan Dapukan</b>.</p>' +
+    '<p class="ink2" style="margin-bottom:1rem">Kartu tanpa nama orang. Pilih jenisnya dan isi nama kelompok / desa yang akan tercetak. Saat dipindai pada sesi pengajian, aplikasi meminta pendamping mengisi <b>Nama, Kelompok, Desa, dan Dapukan</b>.</p>' +
+    '<div class="fld"><label for="pdJ">Jenis pendamping</label><select class="select" id="pdJ"><option value="Kelompok">Pendamping Kelompok</option><option value="Desa">Pendamping Desa</option></select></div>' +
+    '<div class="fld" id="pdKw"><label for="pdKel">Nama kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div>' +
+    '<div class="fld"><label for="pdDes">Nama desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
     '<div class="row c2"><div class="fld"><label for="pdN">Jumlah kartu</label><input class="input" id="pdN" type="number" min="1" max="30" value="5"></div><div class="fld"><label for="pdS">Mulai dari nomor</label><input class="input" id="pdS" type="number" min="1" max="9999" value="' + nextPdpNo() + '"></div></div>' +
     '<div id="pdPv" style="display:flex;justify-content:center;margin-top:.5rem"></div></div>' +
     '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="pdJpg"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button type="button" class="btn btn-pri" id="pdPrint"><i class="bi bi-printer"></i> Cetak</button></div>',
     box => {
-      const list = () => { const n = Math.max(1, Math.min(30, +$('#pdN', box).value || 1)), s0 = Math.max(1, Math.min(9999, +$('#pdS', box).value || 1)); return Array.from({ length: n }, (_, i) => pdpCard(s0 + i)); };
+      const list = () => { const n = Math.max(1, Math.min(30, +$('#pdN', box).value || 1)), s0 = Math.max(1, Math.min(9999, +$('#pdS', box).value || 1)); const o = { Jenis: $('#pdJ', box).value, Kel: $('#pdKel', box).value.trim(), Des: $('#pdDes', box).value.trim() }; return Array.from({ length: n }, (_, i) => pdpCard(s0 + i, o)); };
       const pv = () => { $('#pdPv', box).innerHTML = cardHTML(list()[0]); drawBarcodes($('#pdPv', box)); };
-      $('#pdN', box).oninput = $('#pdS', box).oninput = pv; pv();
+      const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; pv(); };
+      $('#pdN', box).oninput = $('#pdS', box).oninput = $('#pdKel', box).oninput = $('#pdDes', box).oninput = pv; $('#pdJ', box).onchange = jn; pv();
       $('#pdPrint', box).onclick = () => { const l = list(); let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; closeModal(); doPrint(html); };
       $('#pdJpg', box).onclick = () => downloadCards(list());
     });
