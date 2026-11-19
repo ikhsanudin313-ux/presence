@@ -48,7 +48,7 @@ const tingkatOf = p => (p && p.Tingkat) || 'Daerah';
 /* ---------- State ---------- */
 const ST = {
   token: null, user: null, config: { AppName: 'Absensi Pengajian', Target: 85 }, links: null,
-  P: [], J: [], K: [], B: [], D: [], pById: {}, pByKode: {}, jById: {}, kMap: {}, act: [], done: [], noOf: {},
+  P: [], J: [], K: [], B: [], D: [], PC: [], pById: {}, pByKode: {}, jById: {}, kMap: {}, act: [], done: [], noOf: {},
   page: 'dashboard', queue: store.get('np_q') || [], inflight: 0, flushing: false, lastSync: null,
   pg: { page: 1, size: 10, sel: new Set(), cur: null },
   sc: { jadwalId: null, last: null, bad: [], cam: null, camOn: false, lastCode: '', lastAt: 0, sound: true },
@@ -93,7 +93,7 @@ function settleSync(failed) { if (ST.inflight > 0) return; setSync(failed || ST.
 const unpack = t => t.r.map(r => { const o = {}; t.c.forEach((c, i) => { o[c] = r[i]; }); return o; });
 const cmpJ = (a, b) => (a.Tanggal + a.Mulai).localeCompare(b.Tanggal + b.Mulai);
 function ingest(boot) {
-  ST.P = unpack(boot.pengurus); ST.J = unpack(boot.jadwal); ST.K = unpack(boot.kehadiran); ST.B = boot.bimbingan ? unpack(boot.bimbingan) : []; ST.D = boot.pendamping ? unpack(boot.pendamping) : [];
+  ST.P = unpack(boot.pengurus); ST.J = unpack(boot.jadwal); ST.K = unpack(boot.kehadiran); ST.B = boot.bimbingan ? unpack(boot.bimbingan) : []; ST.D = boot.pendamping ? unpack(boot.pendamping) : []; ST.PC = boot.kartuPdp ? unpack(boot.kartuPdp) : [];
   ST.config = boot.config || ST.config; ST.links = boot.links || null; ST.user = boot.user || ST.user;
   index();
 }
@@ -108,7 +108,7 @@ function index() {
   ST.noOf = {}; ST.J.slice().sort(cmpJ).forEach((j, i) => { ST.noOf[j.ID] = i + 1; });
   persistSoon();
 }
-const persistSoon = debounce(() => store.set('np_d', { P: ST.P, J: ST.J, K: ST.K, B: ST.B, D: ST.D, config: ST.config, links: ST.links, t: Date.now() }), 400);
+const persistSoon = debounce(() => store.set('np_d', { P: ST.P, J: ST.J, K: ST.K, B: ST.B, D: ST.D, PC: ST.PC, config: ST.config, links: ST.links, t: Date.now() }), 400);
 const saveQueue = () => store.set('np_q', ST.queue);
 
 /* ---------- Statistik ---------- */
@@ -744,7 +744,7 @@ const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
 const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: 'Pendamping', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
 const pdpTitle = p => 'PENDAMPING ' + String(p.Jenis === 'Desa' ? 'DESA' : 'KELOMPOK');
 const pdpRows = p => p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
-function nextPdpNo() { let m = 0; ST.D.forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
+function nextPdpNo() { let m = 0; ST.D.concat(ST.PC).forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
 function pdpCardsForm() {
   openModal('<div class="modal-h"><h3>Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
     '<p class="ink2" style="margin-bottom:1rem">Kartu tanpa nama orang. Pilih jenisnya dan isi nama kelompok / desa yang akan tercetak. Saat dipindai pada sesi pengajian, aplikasi meminta pendamping mengisi <b>Nama, Kelompok, Desa, dan Dapukan</b>.</p>' +
@@ -759,17 +759,22 @@ function pdpCardsForm() {
       const pv = () => { $('#pdPv', box).innerHTML = cardHTML(list()[0]); drawBarcodes($('#pdPv', box)); };
       const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; pv(); };
       $('#pdN', box).oninput = $('#pdS', box).oninput = $('#pdKel', box).oninput = $('#pdDes', box).oninput = pv; $('#pdJ', box).onchange = jn; pv();
-      $('#pdPrint', box).onclick = () => { const l = list(); let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; closeModal(); doPrint(html); };
-      $('#pdJpg', box).onclick = () => downloadCards(list());
+      const savePc = async l => {
+        try { const r = await call('pendamping.kartu', { cards: l.map(c => ({ kode: c.Kode, jenis: c.Jenis, kelompok: c.Kel, desa: c.Des })) }); (r.cards || []).forEach(c => { const i = ST.PC.findIndex(x => x.Kode === c.Kode); if (i >= 0) ST.PC[i] = c; else ST.PC.push(c); }); persistSoon(); }
+        catch (e) { toast('Data kartu belum tersimpan di server (' + e.message + '). Kelompok/desa tidak akan terisi otomatis saat dipindai.', 'warn'); }
+      };
+      $('#pdPrint', box).onclick = async () => { const l = list(); await savePc(l); let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; closeModal(); doPrint(html); };
+      $('#pdJpg', box).onclick = async () => { const l = list(); await savePc(l); downloadCards(l); };
     });
 }
 function pdpScanForm(code, j) {
+  const pc = ST.PC.find(x => x.Kode === code);
   const all = ST.P.concat(ST.D), dl = (id, k) => '<datalist id="' + id + '">' + uniq(all, k).map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>';
   openModal('<div class="modal-h"><h3>Data Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><form id="fPdp" novalidate><div class="modal-b">' +
-    '<p class="ink2" style="margin-bottom:1rem">Kartu <b class="mono">' + esc(code) + '</b> terbaca. Isi data pendamping untuk sesi <b>' + esc(j.Tema) + '</b>.</p>' +
+    '<p class="ink2" style="margin-bottom:1rem">Kartu <b class="mono">' + esc(code) + '</b>' + (pc ? ' (' + esc(pdpTitle(pc).toLowerCase()) + ')' : '') + ' terbaca. Kelompok dan desa terisi otomatis dari kartu; isi nama dan dapukan untuk sesi <b>' + esc(j.Tema) + '</b>.</p>' +
     '<div class="fld"><label for="pdNama">Nama *</label><input class="input" id="pdNama" maxlength="80" autocomplete="off" required></div>' +
-    '<div class="fld"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" list="dlKel2" maxlength="40"></div>' +
-    '<div class="fld"><label for="pdDesa">Desa</label><input class="input" id="pdDesa" list="dlDesa2" maxlength="40"></div>' +
+    '<div class="fld"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" list="dlKel2" maxlength="40" value="' + esc(pc ? pc.Kelompok : '') + '"></div>' +
+    '<div class="fld"><label for="pdDesa">Desa</label><input class="input" id="pdDesa" list="dlDesa2" maxlength="40" value="' + esc(pc ? pc.Desa : '') + '"></div>' +
     '<div class="fld"><label for="pdDap">Dapukan</label><input class="input" id="pdDap" list="dlDap2" maxlength="60" placeholder="Contoh: Pendamping"></div>' +
     dl('dlKel2', 'Kelompok') + dl('dlDesa2', 'Desa') + dl('dlDap2', 'Dapukan') +
     '<div class="err" id="pdErr" role="alert"></div></div><div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Batal</button><button type="submit" class="btn btn-pri"><i class="bi bi-check2"></i> Catat Hadir</button></div></form>',
@@ -1355,7 +1360,7 @@ function init() {
   const sess = store.get('np_s'), cache = store.get('np_d');
   if (sess && sess.token && cache && cache.P) {
     ST.token = sess.token; ST.user = sess.user; ST.config = cache.config || ST.config; ST.links = cache.links || null;
-    ST.P = cache.P; ST.J = cache.J; ST.K = cache.K; ST.B = cache.B || []; ST.D = cache.D || []; index(); enterApp(); refresh(true); flushQueue();
+    ST.P = cache.P; ST.J = cache.J; ST.K = cache.K; ST.B = cache.B || []; ST.D = cache.D || []; ST.PC = cache.PC || []; index(); enterApp(); refresh(true); flushQueue();
   } else if (sess && sess.token) {
     ST.token = sess.token; ST.user = sess.user; showLogin(); $('#lgBtn').disabled = true; $('#lgBtn').innerHTML = '<span class="spin"></span> Memuat…';
     call('bootstrap').then(r => { ingest(r.boot); enterApp(); }).catch(() => { ST.token = null; showLogin(); });
