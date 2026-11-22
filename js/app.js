@@ -119,7 +119,8 @@ function sessCounts(j) {
     if (k) { rec++; if (k.Status === 'Hadir') h++; else if (k.Status === 'Izin') i++; else if (k.Status === 'Sakit') s++; else a++; }
     else if (closed) a++;
   });
-  return { h, i, s, a, n: ST.act.length, wait: closed ? 0 : ST.act.length - rec };
+  const pd = ST.D.reduce((n, d) => n + (d.JadwalID === j.ID ? 1 : 0), 0);
+  return { h, i, s, a, n: ST.act.length, wait: closed ? 0 : ST.act.length - rec, p: pd, tot: h + pd };
 }
 function pStats(pid, sessions) {
   let h = 0, i = 0, s = 0, a = 0;
@@ -429,7 +430,7 @@ function cardHTML(p, cfg) {
   const ttl = ttlText(p);
   const moon = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15.5 3.2a9 9 0 1 0 5.3 13.9A7.5 7.5 0 0 1 15.5 3.2z" fill="#FBBF24"/><path d="M18.6 4.6l.7 1.6 1.7.2-1.3 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.3-1.1 1.7-.2z" fill="#FBBF24"/></svg>';
   const logoSrc = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
-  const title = pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase();
+  const named = pdp && !!p.Nama, title = pdp ? (named ? 'ID CARD ' + pdpTitle(p) : 'ID CARD PENDAMPING') : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase();
   const photo = hasImg ? '<img alt="" style="visibility:hidden" onload="fitPf(this)" src="https://lh3.googleusercontent.com/d/' + esc(p.FotoID) + '=w480">'
     : pdp ? SILH : '<div class="phd">' + esc(initials(p.Nama)) + '</div>';
   const rows = pdp ? pdpRows(p)
@@ -437,8 +438,8 @@ function cardHTML(p, cfg) {
   return '<div class="idc"><div class="idc-top"></div><div class="idc-wave"></div><div class="idc-in">' +
     '<div class="idc-logo ' + (logoSrc ? 'has' : '') + '">' + (logoSrc ? '<img alt="" src="' + logoSrc + '">' : moon) + '</div><div class="idc-org">' + esc(cfgOrg(cfg)).toUpperCase() + '</div><div class="idc-sl">' + title + '</div>' +
     '<div class="idc-hx"><div class="pf"><div class="pi">' + photo + '</div></div></div>' +
-    '<div class="idc-n">' + (pdp ? pdpTitle(p) : esc(p.Nama)) + '</div>' + (pdp ? '' : '<div class="idc-d">' + esc(p.Dapukan) + '</div>') +
-    '<div class="idc-i' + (pdp ? ' pd' : '') + '">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp && !r[1] ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
+    '<div class="idc-n">' + (pdp && !named ? pdpTitle(p) : esc(p.Nama)) + '</div>' + (pdp && !named ? '' : '<div class="idc-d">' + esc(p.Dapukan) + '</div>') +
+    '<div class="idc-i' + (pdp && !named ? ' pd' : '') + '">' + rows.map(r => '<span class="l">' + r[0] + '</span><span>:</span><b' + (pdp && !r[1] ? ' class="ln"' : '') + '>' + esc(r[1]) + '</b>').join('') + '</div>' +
     '<div class="idc-b"><svg class="bc" data-code="' + esc(p.Kode) + '"></svg><div>' + esc(p.Kode) + '</div></div></div></div>';
 }
 
@@ -479,7 +480,8 @@ async function drawCardCanvas(p, cfg) {
   else { x.fillStyle = '#FBBF24'; x.beginPath(); x.arc(107, 23, 6.5, 0, 7); x.fill(); x.fillStyle = '#14532D'; x.beginPath(); x.arc(110, 21, 5.6, 0, 7); x.fill(); }
   let org = cfgOrg(cfg).toUpperCase(); x.font = '800 9px ' + FF; while (org.length > 3 && x.measureText(org).width > 190) org = org.slice(0, -1);
   txt(org, 108, 45.5, '800 9px ' + FF, '#FBBF24');
-  txt(pdp ? 'ID CARD PENDAMPING' : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase(), 108, 56, '600 6.5px ' + FF, '#FFFFFF');
+  const named = pdp && !!p.Nama;
+  txt(pdp ? (named ? 'ID CARD ' + pdpTitle(p) : 'ID CARD PENDAMPING') : 'ID CARD PENGURUS ' + tingkatOf(p).toUpperCase(), 108, 56, '600 6.5px ' + FF, '#FFFFFF');
   let iw = 64, ih = 86; if (photo) { const sc = Math.min(PF_MAXW / photo.width, PF_MAXH / photo.height); iw = Math.round(photo.width * sc); ih = Math.round(photo.height * sc); }
   const fw = iw + 2 * (PF_RING + PF_PAD), fh = ih + 2 * (PF_RING + PF_PAD), fx = 108 - fw / 2, fy = 66.5 + (100 - fh) / 2;
   g = x.createLinearGradient(fx, fy, fx + fw, fy + fh); g.addColorStop(0, '#F59E0B'); g.addColorStop(.5, '#FBBF24'); g.addColorStop(1, '#D97706'); x.fillStyle = g; chamfer(x, fx, fy, fw, fh, PF_CUT); x.fill();
@@ -488,20 +490,20 @@ async function drawCardCanvas(p, cfg) {
   if (photo) x.drawImage(photo, ix, iy, iw, ih);
   else if (pdp) { x.fillStyle = '#E2EAE6'; x.fillRect(ix, iy, iw, ih); x.fillStyle = '#94A9A0'; x.beginPath(); x.arc(ix + iw / 2, iy + 32, 14, 0, 7); x.fill(); x.beginPath(); x.moveTo(ix + 6, iy + ih); x.bezierCurveTo(ix + 8, iy + 64, ix + 20, iy + 56, ix + iw / 2, iy + 56); x.bezierCurveTo(ix + iw - 20, iy + 56, ix + iw - 8, iy + 64, ix + iw - 6, iy + ih); x.fill(); }
   else { x.fillStyle = '#065F46'; x.fillRect(ix, iy, iw, ih); txt(initials(p.Nama), ix + iw / 2, iy + ih / 2, '700 26px ' + FF, '#fff'); }
-  const nm = pdp ? pdpTitle(p) : String(p.Nama || '').toUpperCase(); x.font = '800 12px ' + FF;
+  const nm = pdp && !named ? pdpTitle(p) : String(p.Nama || '').toUpperCase(); x.font = '800 12px ' + FF;
   const nl = wrapText(x, nm, 192, 2), ny = 179.5 - (nl.length - 1) * 6.9;
   nl.forEach((l, i) => txt(l, 108, ny + i * 13.8, '800 12px ' + FF, '#B45309'));
   const dy = ny + (nl.length - 1) * 13.8 + 14;
-  x.font = '700 8px ' + FF; let dp = pdp ? '' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
-  if (!pdp) txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
+  x.font = '700 8px ' + FF; let dp = pdp && !named ? '' : String(p.Dapukan || ''); while (dp.length > 3 && x.measureText(dp).width > 192) dp = dp.slice(0, -1);
+  if (!pdp || named) txt(dp, 108, dy, '700 8px ' + FF, '#0F172A');
   const ttl = ttlText(p);
   const rows = pdp ? pdpRows(p) : [['TTL', ttl], ['Kelompok', p.Kelompok || '']].concat(p.Desa ? [['Desa', p.Desa]] : [], [['Alamat', p.Alamat || '—']]);
-  x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
-  let ry = pdp ? dy + 10 : dy + 12;
+  x.font = (pdp && !named ? '600 8px ' : '600 7.3px ') + FF; const lw = Math.max.apply(null, rows.map(r => x.measureText(r[0]).width)), vx = 16 + lw + 4 + 5 + 4;
+  let ry = pdp && !named ? dy + 10 : dy + 12;
   rows.forEach(r => {
-    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = (pdp ? '600 8px ' : '600 7.3px ') + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
+    x.textAlign = 'left'; x.textBaseline = 'top'; x.font = (pdp && !named ? '600 8px ' : '600 7.3px ') + FF; x.fillStyle = '#334155'; x.fillText(r[0], 16, ry); x.fillText(':', 16 + lw + 4, ry);
     if (pdp && !r[1]) { x.strokeStyle = '#94A3B8'; x.setLineDash([1, 1.6]); x.lineWidth = .6; x.beginPath(); x.moveTo(vx, ry + 9.5); x.lineTo(200, ry + 9.5); x.stroke(); x.setLineDash([]); ry += 25; }
-    else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += pdp ? 25 : ls.length * 9.86 + 2; }
+    else { x.fillStyle = '#0F172A'; const ls = wrapText(x, r[1], 200 - vx, 2); ls.forEach((l, i) => x.fillText(l, vx, ry + i * 9.86)); ry += pdp && !named ? 25 : ls.length * 9.86 + 2; }
   });
   const bc = code128(String(p.Kode)), bw = 169, k = bw / bc.w, bx = (W - bw) / 2, by = 292; x.fillStyle = '#000';
   const re = /M(\d+) 0h(\d+)/g; let m; while ((m = re.exec(bc.d))) x.fillRect(bx + (+m[1]) * k, by, (+m[2]) * k, 28);
@@ -741,31 +743,71 @@ async function exportXlsx(sheets, filename) {
    PENDAMPING: kartu umum PDP-001… ; saat dipindai muncul isian data
    ============================================================ */
 const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
-const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: 'Pendamping', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
+const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: '', Dapukan: '', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
+const pcCard = pc => ({ _pdp: true, Kode: pc.Kode, Nama: pc.Nama || '', Dapukan: pc.Dapukan || '', Jenis: pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok', Kel: pc.Kelompok || '', Des: pc.Desa || '' });
 const pdpTitle = p => 'PENDAMPING ' + String(p.Jenis === 'Desa' ? 'DESA' : 'KELOMPOK');
 const pdpRows = p => p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
 function nextPdpNo() { let m = 0; ST.D.concat(ST.PC).forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
+function pdpPrintList(l) { let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; doPrint(html); }
 function pdpCardsForm() {
-  openModal('<div class="modal-h"><h3>Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
-    '<p class="ink2" style="margin-bottom:1rem">Kartu tanpa nama orang. Pilih jenisnya dan isi nama kelompok / desa yang akan tercetak. Saat dipindai pada sesi pengajian, aplikasi meminta pendamping mengisi <b>Nama, Kelompok, Desa, dan Dapukan</b>.</p>' +
-    '<div class="fld"><label for="pdJ">Jenis pendamping</label><select class="select" id="pdJ"><option value="Kelompok">Pendamping Kelompok</option><option value="Desa">Pendamping Desa</option></select></div>' +
-    '<div class="fld" id="pdKw"><label for="pdKel">Nama kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div>' +
-    '<div class="fld"><label for="pdDes">Nama desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
-    '<div class="row c2"><div class="fld"><label for="pdN">Jumlah kartu</label><input class="input" id="pdN" type="number" min="1" max="30" value="5"></div><div class="fld"><label for="pdS">Mulai dari nomor</label><input class="input" id="pdS" type="number" min="1" max="9999" value="' + nextPdpNo() + '"></div></div>' +
-    '<div id="pdPv" style="display:flex;justify-content:center;margin-top:.5rem"></div></div>' +
-    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="pdJpg"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button type="button" class="btn btn-pri" id="pdPrint"><i class="bi bi-printer"></i> Cetak</button></div>',
+  openModal('<div class="modal-h"><h3>Data &amp; Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
+    '<p class="ink2" style="margin-bottom:1rem">Daftarkan pendamping (nama, dapukan, kelompok/desa) lalu cetak kartunya. Saat kartu dipindai di sesi pengajian, <b>namanya langsung muncul dan hadir tercatat</b>.</p>' +
+    '<form id="pdForm" novalidate><input type="hidden" id="pdCode"><div class="row c2"><div class="fld"><label for="pdJ">Jenis pendamping</label><select class="select" id="pdJ"><option value="Kelompok">Pendamping Kelompok</option><option value="Desa">Pendamping Desa</option></select></div>' +
+    '<div class="fld"><label for="pdNm">Nama *</label><input class="input" id="pdNm" maxlength="80" autocomplete="off"></div></div>' +
+    '<div class="row c2"><div class="fld"><label for="pdDp">Dapukan</label><input class="input" id="pdDp" maxlength="60" placeholder="Contoh: Pendamping Kelompok"></div>' +
+    '<div class="fld" id="pdKw"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div></div>' +
+    '<div class="fld"><label for="pdDes">Desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
+    '<div class="err" id="pdErr" role="alert"></div><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="submit" class="btn btn-pri" id="pdSave"><i class="bi bi-plus-lg"></i> Tambah Pendamping</button><button type="button" class="btn btn-2 hide" id="pdCancel">Batal ubah</button></div></form>' +
+    '<div class="card-h" style="margin:1.25rem 0 .5rem"><div><h3 style="font-size:1rem">Pendamping Terdaftar <span class="tag" id="pdCnt"></span></h3></div></div><div id="pdList" class="bim-l"></div>' +
+    '<div id="pdPv" style="display:flex;justify-content:center;margin-top:1rem"></div></div>' +
+    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="pdJpgAll"><i class="bi bi-file-earmark-image"></i> JPG Semua</button><button type="button" class="btn btn-pri" id="pdPrintAll"><i class="bi bi-printer"></i> Cetak Semua</button></div>',
     box => {
-      const list = () => { const n = Math.max(1, Math.min(30, +$('#pdN', box).value || 1)), s0 = Math.max(1, Math.min(9999, +$('#pdS', box).value || 1)); const o = { Jenis: $('#pdJ', box).value, Kel: $('#pdKel', box).value.trim(), Des: $('#pdDes', box).value.trim() }; return Array.from({ length: n }, (_, i) => pdpCard(s0 + i, o)); };
-      const pv = () => { $('#pdPv', box).innerHTML = cardHTML(list()[0]); drawBarcodes($('#pdPv', box)); };
-      const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; pv(); };
-      $('#pdN', box).oninput = $('#pdS', box).oninput = $('#pdKel', box).oninput = $('#pdDes', box).oninput = pv; $('#pdJ', box).onchange = jn; pv();
-      const savePc = async l => {
-        try { const r = await call('pendamping.kartu', { cards: l.map(c => ({ kode: c.Kode, jenis: c.Jenis, kelompok: c.Kel, desa: c.Des })) }); (r.cards || []).forEach(c => { const i = ST.PC.findIndex(x => x.Kode === c.Kode); if (i >= 0) ST.PC[i] = c; else ST.PC.push(c); }); persistSoon(); }
-        catch (e) { toast('Data kartu belum tersimpan di server (' + e.message + '). Kelompok/desa tidak akan terisi otomatis saat dipindai.', 'warn'); }
+      const reg = () => ST.PC.slice().sort((a, b) => a.Kode.localeCompare(b.Kode)), find = k => ST.PC.find(x => x.Kode === k);
+      const preview = pc => { $('#pdPv', box).innerHTML = pc ? cardHTML(pcCard(pc)) : ''; if (pc) drawBarcodes($('#pdPv', box)); };
+      const list = () => { const l = reg(); $('#pdCnt', box).textContent = l.length;
+        $('#pdList', box).innerHTML = l.length ? l.map(pc => '<div class="bim-i" style="align-items:center"><div style="min-width:0;flex:1"><span class="mono mute">' + esc(pc.Kode) + '</span> <b>' + (pc.Nama ? esc(pc.Nama) : '<i class="mute">belum ada nama</i>') + '</b><small class="mute" style="display:block">' + [pc.Dapukan, 'Pend. ' + (pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'), pc.Jenis === 'Desa' ? '' : pc.Kelompok, pc.Desa].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
+          '<div style="display:flex;gap:.125rem"><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="view" data-k="' + pc.Kode + '" aria-label="Lihat kartu"><i class="bi bi-eye"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="edit" data-k="' + pc.Kode + '" aria-label="Ubah"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="jpg" data-k="' + pc.Kode + '" aria-label="Unduh JPG"><i class="bi bi-file-earmark-image"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="print" data-k="' + pc.Kode + '" aria-label="Cetak"><i class="bi bi-printer"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="del" data-k="' + pc.Kode + '" aria-label="Hapus"><i class="bi bi-trash"></i></button></div></div>').join('') : '<div class="help">Belum ada pendamping terdaftar.</div>'; };
+      const reset = () => { ['pdCode', 'pdNm', 'pdDp', 'pdKel', 'pdDes'].forEach(i => { $('#' + i, box).value = ''; }); $('#pdSave', box).innerHTML = '<i class="bi bi-plus-lg"></i> Tambah Pendamping'; $('#pdCancel', box).classList.add('hide'); };
+      const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; };
+      $('#pdJ', box).onchange = jn;
+      $('#pdCancel', box).onclick = reset;
+      $('#pdForm', box).onsubmit = async ev => {
+        ev.preventDefault(); const nama = $('#pdNm', box).value.trim(), err = $('#pdErr', box); err.textContent = '';
+        if (nama.length < 2) { err.textContent = 'Nama pendamping wajib diisi.'; return; }
+        const kode = $('#pdCode', box).value || 'PDP-' + pad(nextPdpNo(), 3), jenis = $('#pdJ', box).value;
+        const c = { kode, jenis, nama, dapukan: $('#pdDp', box).value.trim(), kelompok: jenis === 'Desa' ? '' : $('#pdKel', box).value.trim(), desa: $('#pdDes', box).value.trim() };
+        try {
+          const r = await call('pendamping.kartu', { cards: [c] });
+          (r.cards || []).forEach(x => { const i = ST.PC.findIndex(y => y.Kode === x.Kode); if (i >= 0) ST.PC[i] = x; else ST.PC.push(x); });
+          persistSoon(); toast(nama + ' tersimpan (' + kode + ')'); reset(); list(); preview(find(kode));
+        } catch (e) { err.textContent = e.message; }
       };
-      $('#pdPrint', box).onclick = async () => { const l = list(); await savePc(l); let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; closeModal(); doPrint(html); };
-      $('#pdJpg', box).onclick = async () => { const l = list(); await savePc(l); downloadCards(l); };
+      box.addEventListener('click', async ev => {
+        const b = ev.target.closest('[data-pd]'); if (!b) return; const pc = find(b.dataset.k); if (!pc) return;
+        const act = b.dataset.pd;
+        if (act === 'view') preview(pc);
+        else if (act === 'print') pdpPrintList([pcCard(pc)]);
+        else if (act === 'jpg') downloadCards([pcCard(pc)]);
+        else if (act === 'edit') { $('#pdCode', box).value = pc.Kode; $('#pdJ', box).value = pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'; $('#pdNm', box).value = pc.Nama || ''; $('#pdDp', box).value = pc.Dapukan || ''; $('#pdKel', box).value = pc.Kelompok || ''; $('#pdDes', box).value = pc.Desa || ''; jn(); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Perubahan'; $('#pdCancel', box).classList.remove('hide'); preview(pc); $('#pdNm', box).focus(); }
+        else if (act === 'del') {
+          if (!await confirmBox('Hapus data pendamping?', 'Hapus <b>' + esc(pc.Nama || pc.Kode) + '</b> (' + esc(pc.Kode) + ')? Kartu yang sudah dicetak tidak berlaku lagi untuk terisi otomatis. Catatan kehadiran lama tetap ada.', 'Hapus', true)) return;
+          try { await call('pendamping.kartuDel', { kode: pc.Kode }); ST.PC = ST.PC.filter(x => x.Kode !== pc.Kode); persistSoon(); list(); preview(null); toast('Data pendamping dihapus.'); } catch (e) { toast(e.message, 'err'); }
+        }
+      });
+      $('#pdPrintAll', box).onclick = () => { const l = reg().map(pcCard); if (!l.length) { toast('Belum ada pendamping terdaftar.', 'warn'); return; } closeModal(); pdpPrintList(l); };
+      $('#pdJpgAll', box).onclick = () => { const l = reg().map(pcCard); if (!l.length) { toast('Belum ada pendamping terdaftar.', 'warn'); return; } downloadCards(l); };
+      list(); jn();
     });
+}
+function pdpRecord(j, code, d) {
+  const rec = { ID: 'tmp' + uid(), JadwalID: j.ID, Kode: code, Waktu: nowStr(), Nama: d.nama, Kelompok: d.kelompok || '', Desa: d.desa || '', Dapukan: d.dapukan || '', Oleh: ST.user.username, _pending: true };
+  const payload = { jadwalId: j.ID, kode: code, nama: rec.Nama, kelompok: rec.Kelompok, desa: rec.Desa, dapukan: rec.Dapukan };
+  ST.D.push(rec); beep('ok'); ST.sc.last = { type: 'ok', p: { Nama: rec.Nama, Dapukan: rec.Dapukan, Kelompok: rec.Kelompok || rec.Desa, Kode: code, _pd: true }, time: nowStr().slice(11, 19) }; if (ST.page === 'scan') renderScanResult();
+  toast('Pendamping hadir: ' + rec.Nama); persistSoon(); if (ST.page === 'scan') rScanLive();
+  if (j.Status === 'Terjadwal') setStatusJadwal(j.ID, 'Berlangsung', true);
+  call('pendamping.add', payload)
+    .then(r => { Object.assign(rec, r.rec); delete rec._pending; persistSoon(); if (ST.page === 'scan') rScanLive(); })
+    .catch(e => { if (e.net) { enqueue('pendamping.add', payload); return; } ST.D = ST.D.filter(x => x !== rec); beep('bad'); toast(e.message, 'err'); if (ST.page === 'scan') rScanLive(); });
 }
 function pdpScanForm(code, j) {
   const pc = ST.PC.find(x => x.Kode === code);
@@ -782,13 +824,8 @@ function pdpScanForm(code, j) {
       setTimeout(() => { const i = $('#pdNama', box); if (i) i.focus(); }, 60);
       $('#fPdp', box).onsubmit = ev => {
         ev.preventDefault(); const nama = $('#pdNama', box).value.trim(); if (nama.length < 2) { $('#pdErr', box).textContent = 'Nama wajib diisi.'; return; }
-        const rec = { ID: 'tmp' + uid(), JadwalID: j.ID, Kode: code, Waktu: nowStr(), Nama: nama, Kelompok: $('#pdKel', box).value.trim(), Desa: $('#pdDesa', box).value.trim(), Dapukan: $('#pdDap', box).value.trim(), Oleh: ST.user.username, _pending: true };
-        const payload = { jadwalId: j.ID, kode: code, nama: rec.Nama, kelompok: rec.Kelompok, desa: rec.Desa, dapukan: rec.Dapukan };
-        ST.D.push(rec); closeModal(); beep('ok'); toast('Pendamping dicatat: ' + nama); persistSoon(); if (ST.page === 'scan') rScanLive();
-        if (j.Status === 'Terjadwal') setStatusJadwal(j.ID, 'Berlangsung', true);
-        call('pendamping.add', payload)
-          .then(r => { Object.assign(rec, r.rec); delete rec._pending; persistSoon(); if (ST.page === 'scan') rScanLive(); })
-          .catch(e => { if (e.net) { enqueue('pendamping.add', payload); return; } ST.D = ST.D.filter(d => d !== rec); beep('bad'); toast(e.message, 'err'); if (ST.page === 'scan') rScanLive(); });
+        const nm2 = nama; closeModal();
+        pdpRecord(j, code, { nama: nm2, kelompok: $('#pdKel', box).value.trim(), desa: $('#pdDesa', box).value.trim(), dapukan: $('#pdDap', box).value.trim() });
       };
     });
 }
@@ -811,7 +848,7 @@ function printPresensi(jid) {
     return '<tr><td class="c">' + (i + 1) + '</td><td>' + esc(p.Nama) + '</td><td>' + esc(p.Kelompok) + '</td><td>' + esc(p.Dapukan) + '</td><td class="c">' + (k ? esc(k.Status) : '') + '</td><td class="c">' + (k ? esc(String(k.Waktu).slice(11, 16)) : '') + '</td><td>' + (k ? esc(k.Keterangan || '') : '') + '</td><td style="width:22mm"></td></tr>'; }).join('');
   const pd = ST.D.filter(d => d.JadwalID === j.ID);
   doPrint('<div class="prep"><h1>Daftar Hadir Pengajian Pengurus — ' + esc(ST.config.AppName) + '</h1><p><b>' + esc(j.Tema) + '</b> · ' + esc(fmtTgl(j.Tanggal)) + ' · ' + esc(j.Mulai) + (j.Selesai ? '–' + esc(j.Selesai) : '') + ' WIB' + (j.Tempat ? ' · ' + esc(j.Tempat) : '') + (j.Pemateri ? ' · Pemateri: ' + esc(j.Pemateri) : '') + '</p>' +
-    '<p>Hadir ' + c.Hadir + ' · Izin ' + c.Izin + ' · Sakit ' + c.Sakit + ' · Alpa ' + c.Alpa + ' · Belum tercatat ' + c.Belum + ' · Pendamping ' + pd.length + ' · Dicetak ' + esc(fmtTgl(todayStr())) + '</p>' +
+    '<p><b>Total hadir ' + (c.Hadir + pd.length) + '</b> (pengurus wajib ' + c.Hadir + ' + pendamping ' + pd.length + ') · Izin ' + c.Izin + ' · Sakit ' + c.Sakit + ' · Alpa ' + c.Alpa + ' · Belum tercatat ' + c.Belum + ' · Pendamping ' + pd.length + ' · Dicetak ' + esc(fmtTgl(todayStr())) + '</p>' +
     '<table><thead><tr><th>No</th><th>Nama</th><th>Kelompok</th><th>Dapukan</th><th>Status</th><th>Jam</th><th>Keterangan</th><th>Paraf</th></tr></thead><tbody>' + rowsH + '</tbody></table>' +
     (pd.length ? '<h1 style="font-size:12pt;margin:6mm 0 2mm">Pendamping Hadir (' + pd.length + ')</h1><table><thead><tr><th>No</th><th>Nama</th><th>Kelompok</th><th>Desa</th><th>Dapukan</th><th>Jam</th><th>Paraf</th></tr></thead><tbody>' + pd.map((d, i) => '<tr><td class="c">' + (i + 1) + '</td><td>' + esc(d.Nama) + '</td><td>' + esc(d.Kelompok) + '</td><td>' + esc(d.Desa) + '</td><td>' + esc(d.Dapukan) + '</td><td class="c">' + esc(String(d.Waktu).slice(11, 16)) + '</td><td style="width:22mm"></td></tr>').join('') + '</tbody></table>' : '') + '</div>');
 }
@@ -833,7 +870,7 @@ RENDER.jadwal = function () {
       const c = sessCounts(j), isLive = j.Status === 'Berlangsung', isNext = live && live.ID === j.ID && !isLive;
       return '<div class="card ses hov ' + (isLive ? 'live' : isNext ? 'next' : '') + '"><div class="ses-top"><div class="ses-no"><small>SESI</small><b>' + ST.noOf[j.ID] + '</b></div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap">' + statusChipJ(j) + '<span class="mono mute">' + fmtTgl(j.Tanggal) + '</span></div><h4 style="margin-top:.375rem">' + esc(j.Tema) + '</h4></div></div>' +
         '<div class="ses-meta"><span><i class="bi bi-clock"></i>' + esc(j.Mulai) + (j.Selesai ? '–' + esc(j.Selesai) : '') + ' WIB</span>' + (j.Tempat ? '<span><i class="bi bi-geo-alt"></i>' + esc(j.Tempat) + '</span>' : '') + (j.Pemateri ? '<span><i class="bi bi-person"></i>' + esc(j.Pemateri) + '</span>' : '') + '<span><i class="bi bi-tag"></i>' + esc(j.Kategori) + '</span></div>' +
-        (j.Status === 'Selesai' || c.h + c.i + c.s ? '<div><div class="bar" style="margin-bottom:.375rem"><i style="width:' + (c.n ? c.h / c.n * 100 : 0) + '%"></i></div><div class="mini"><span class="chip c-H nodot">H ' + c.h + '</span><span class="chip c-I nodot">I ' + c.i + '</span><span class="chip c-S nodot">S ' + c.s + '</span><span class="chip c-A nodot">A ' + c.a + '</span><span class="mute">' + fmtPct(c.n ? c.h / c.n * 100 : 0) + '</span></div></div>' : '') +
+        (j.Status === 'Selesai' || c.h + c.i + c.s + c.p ? '<div><div class="bar" style="margin-bottom:.375rem"><i style="width:' + (c.n ? c.h / c.n * 100 : 0) + '%"></i></div><div class="mini"><span class="chip c-H nodot">H ' + c.h + '</span><span class="chip c-I nodot">I ' + c.i + '</span><span class="chip c-S nodot">S ' + c.s + '</span><span class="chip c-A nodot">A ' + c.a + '</span><span class="mute">' + fmtPct(c.n ? c.h / c.n * 100 : 0) + '</span></div><div class="mini" style="margin-top:.25rem"><span class="chip c-N nodot">Pendamping ' + c.p + '</span><span class="mute">Total hadir <b>' + c.tot + '</b></span></div></div>' : '') +
         '<div class="ses-bot"><div style="display:flex;gap:.375rem;flex-wrap:wrap">' + '<button class="btn btn-2 btn-sm" data-act="printPres" data-id="' + j.ID + '"><i class="bi bi-printer"></i> Cetak Absensi</button>' + (j.Status !== 'Selesai' && canScan() ? '<button class="btn btn-pri btn-sm" data-act="openScan" data-id="' + j.ID + '"><i class="bi bi-upc-scan"></i> Buka Terminal Scan</button>' : '<button class="btn btn-2 btn-sm" data-act="viewPresensi" data-id="' + j.ID + '"><i class="bi bi-eye"></i> Lihat Presensi</button>' + (j.Status === 'Selesai' && canScan() ? '<button class="btn btn-2 btn-sm" data-act="statusJadwal" data-id="' + j.ID + '" data-s="Berlangsung"><i class="bi bi-unlock"></i> Buka Kembali</button>' : '')) + '</div>' +
         '<div style="display:flex;gap:.25rem">' + (canScan() ? '<button class="btn btn-ghost btn-sm btn-ic" data-act="editJadwal" data-id="' + j.ID + '" aria-label="Ubah"><i class="bi bi-pencil"></i></button>' : '') + (master ? '<button class="btn btn-ghost btn-sm btn-ic" data-act="delJadwal" data-id="' + j.ID + '" aria-label="Hapus"><i class="bi bi-trash"></i></button>' : '') + '</div></div></div>';
     }).join('') : '<div class="card card-p empty" style="grid-column:1/-1"><i class="bi bi-calendar-x"></i>Belum ada jadwal. Klik “Tambah Jadwal”.</div>') + '</div>';
@@ -908,25 +945,33 @@ RENDER.scan = function () {
     '<div style="display:flex;flex-direction:column;gap:1rem"><div class="res" id="scRes"></div><div class="card card-p" id="scCount"></div><div class="card card-p" id="scPdp"></div></div></div>' +
     '<div class="grid g-s2" style="margin-top:1rem">' +
     '<div class="card card-p"><div class="card-h"><div><h3>Presensi Manual &amp; Keterangan</h3><p>Untuk kartu tertinggal, rusak, atau izin/sakit</p></div></div>' +
-    '<form id="mnForm" novalidate><div class="fld"><label for="mnP">Cari nama / kode pengurus *</label><input class="input" id="mnP" list="dlMn" placeholder="Ketik minimal 2 huruf…" autocomplete="off"><datalist id="dlMn"></datalist></div>' +
+    '<form id="mnForm" novalidate><div class="fld"><label for="mnP">Belum absen <span id="mnCnt" class="tag"></span></label><input class="input" id="mnP" placeholder="Cari nama atau kode…" autocomplete="off"><div id="mnList" class="mn-list" role="listbox" aria-label="Daftar pengurus"></div><div class="help" id="mnSel">Ketuk nama pada daftar untuk memilih.</div><label style="display:flex;gap:.5rem;align-items:center;margin-top:.375rem;font-size:.8125rem"><input type="checkbox" id="mnAll"> Tampilkan juga yang sudah absen (untuk mengubah status)</label></div>' +
     '<div class="fld"><span class="lbl">Status kehadiran</span><div class="seg"><label><input type="radio" name="mnS" value="Hadir" checked><span class="H">Hadir</span></label><label><input type="radio" name="mnS" value="Izin"><span class="I">Izin</span></label><label><input type="radio" name="mnS" value="Sakit"><span class="S">Sakit</span></label><label><input type="radio" name="mnS" value="Alpa"><span class="A">Alpa</span></label></div></div>' +
     '<div class="fld"><label for="mnK">Keterangan (opsional)</label><textarea class="textarea" id="mnK" maxlength="200" style="min-height:4rem" placeholder="Contoh: ID card tertinggal di rumah"></textarea></div>' +
     '<div class="err" id="mnErr" role="alert"></div><button class="btn btn-pri btn-block" type="submit"><i class="bi bi-cloud-check"></i> Simpan Manual &amp; Sinkron</button></form></div>' +
     '<div class="card card-p"><div class="card-h"><div><h3>Live Log Presensi Sesi Ini</h3><p>Auto-refresh · gabungan scan &amp; manual</p></div></div><div class="tbl-wrap cards"><table class="t rt" id="scLog"></table></div></div></div>';
   $('#mnForm').onsubmit = manualSubmit;
-  $('#mnP').oninput = debounce(fillMn, 120);
+  $('#mnP').oninput = debounce(fillMn, 120); $('#mnAll').onchange = fillMn;
   $('#scIn').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); scanSubmit(); } };
   $('#scSndBtn').innerHTML = '<i class="bi ' + (ST.sc.sound ? 'bi-volume-up' : 'bi-volume-mute') + '"></i>';
   rScanLive(); renderScanResult(); fillMn();
   if (matchMedia('(pointer:fine)').matches) $('#scIn').focus();
 };
 function fillMn() {
-  const q = ($('#mnP').value || '').toLowerCase(), dl = $('#dlMn'); if (!dl) return;
-  const m = ST.act.filter(p => !q || (p.Nama + ' ' + p.Kode).toLowerCase().indexOf(q) >= 0).slice(0, 12);
-  dl.innerHTML = m.map(p => '<option value="' + esc(p.Nama + ' · ' + p.Kode) + '">').join('');
+  const box = $('#mnList'); if (!box) return;
+  const q = ($('#mnP').value || '').trim().toLowerCase(), j = ST.jById[ST.sc.jadwalId], sel = ST.sc.mnSel;
+  const all = $('#mnAll') && $('#mnAll').checked, belum = ST.act.filter(p => !(j && ST.kMap[j.ID + '|' + p.ID])).length;
+  $('#mnCnt').textContent = belum + ' orang';
+  const m = ST.act.filter(p => !q || (p.Nama + ' ' + p.Kode + ' ' + p.Kelompok + ' ' + p.Dapukan).toLowerCase().indexOf(q) >= 0)
+    .map(p => ({ p, k: j ? ST.kMap[j.ID + '|' + p.ID] : null })).filter(x => all || !x.k)
+    .sort((a, b) => (a.k ? 1 : 0) - (b.k ? 1 : 0) || a.p.Nama.localeCompare(b.p.Nama));
+  box.innerHTML = m.length ? m.map(x => '<button type="button" role="option" class="mn-i' + (x.p.ID === sel ? ' on' : '') + '" aria-selected="' + (x.p.ID === sel) + '" data-act="mnPick" data-id="' + x.p.ID + '"><span class="who">' + avatarHTML(x.p) + '<span style="min-width:0"><b>' + esc(x.p.Nama) + '</b><small class="mute" style="display:block">' + esc(x.p.Dapukan) + ' · ' + esc(x.p.Kelompok) + '</small></span></span>' +
+    (x.k ? '<span class="tag">' + esc(x.k.Status) + '</span>' : '<span class="mute" style="font-size:.75rem">belum</span>') + '</button>').join('') : '<div class="help" style="padding:.75rem">' + (q ? 'Tidak ada pengurus yang cocok.' : 'Semua pengurus sudah tercatat absen.') + '</div>';
+  const p = sel && ST.pById[sel]; $('#mnSel').innerHTML = p ? 'Terpilih: <b>' + esc(p.Nama) + '</b>' : 'Ketuk nama pada daftar untuk memilih.';
 }
 function rScanLive() {
   const j = ST.jById[ST.sc.jadwalId]; if (!j || !$('#scHead')) return;
+  setTimeout(fillMn, 0);
   const c = sessCounts(j), pct = c.n ? c.h / c.n * 100 : 0, list = scanSessions();
   $('#scHead').innerHTML =
     '<div style="display:flex;flex-wrap:wrap;gap:1rem;justify-content:space-between;align-items:flex-start"><div style="min-width:0;flex:1 1 280px"><div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">' + statusChipJ(j) + '<span class="mono mute">Sesi ke-' + ST.noOf[j.ID] + '</span></div>' +
@@ -934,9 +979,9 @@ function rScanLive() {
     '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center"><select class="select" id="scSel" style="width:auto;min-width:200px">' + list.map(x => '<option value="' + x.ID + '" ' + (x.ID === j.ID ? 'selected' : '') + '>Sesi ' + ST.noOf[x.ID] + ' · ' + fmtTgl(x.Tanggal, true) + '</option>').join('') + '</select>' +
     (j.Status === 'Terjadwal' ? '<button class="btn btn-pri" data-act="statusJadwal" data-id="' + j.ID + '" data-s="Berlangsung"><i class="bi bi-play-circle"></i> Buka Sesi</button>' : '') +
     '<button class="btn btn-2" data-act="printPres" data-id="' + j.ID + '"><i class="bi bi-printer"></i> Cetak Absensi</button><button class="btn btn-danger" data-act="closeSesi" data-id="' + j.ID + '"><i class="bi bi-lock"></i> Tutup Sesi</button></div></div>' +
-    '<div class="prog" style="margin-top:1rem"><div><span class="mono" style="font-size:1.5rem;font-weight:600">' + fmtPct(pct) + '</span> <span class="help">progres hadir</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><span class="chip c-H">Hadir ' + c.h + '</span><span class="chip c-I">Izin ' + c.i + '</span><span class="chip c-S">Sakit ' + c.s + '</span><span class="chip c-N">Menunggu ' + c.wait + '</span></div>';
+    '<div class="prog" style="margin-top:1rem"><div><span class="mono" style="font-size:1.5rem;font-weight:600">' + fmtPct(pct) + '</span> <span class="help">progres hadir</span></div><div class="bar"><i style="width:' + pct + '%"></i></div><span class="chip c-H">Hadir ' + c.h + '</span><span class="chip c-I">Izin ' + c.i + '</span><span class="chip c-S">Sakit ' + c.s + '</span><span class="chip c-N">Menunggu ' + c.wait + '</span><span class="chip c-N">Pendamping ' + c.p + '</span><span class="chip c-H"><b>Total hadir ' + c.tot + '</b></span></div>';
   $('#scSel').onchange = e => { ST.sc.jadwalId = e.target.value; ST.sc.last = null; ST.sc.bad = []; rScanLive(); renderScanResult(); };
-  $('#scCount').innerHTML = '<div class="card-h" style="margin-bottom:.5rem"><div><h3>Ringkasan Sesi</h3><p>' + c.n + ' pengurus aktif</p></div></div><div class="dist"><div><b>' + c.h + '</b>Hadir</div><div><b style="color:var(--gold-d)">' + c.i + '</b>Izin</div><div><b style="color:var(--blue-d)">' + c.s + '</b>Sakit</div><div><b style="color:var(--rose-d)">' + c.wait + '</b>Belum hadir</div></div><div class="help" style="margin-top:.75rem"><i class="bi bi-info-circle"></i> Saat sesi ditutup, pengurus tanpa catatan dihitung <b>Alpa</b> di laporan.</div>';
+  $('#scCount').innerHTML = '<div class="card-h" style="margin-bottom:.5rem"><div><h3>Ringkasan Sesi</h3><p>' + c.n + ' pengurus aktif</p></div></div><div class="dist"><div><b>' + c.h + '</b>Hadir</div><div><b style="color:var(--gold-d)">' + c.i + '</b>Izin</div><div><b style="color:var(--blue-d)">' + c.s + '</b>Sakit</div><div><b style="color:var(--rose-d)">' + c.wait + '</b>Belum hadir</div></div><div class="help" style="margin-top:.75rem">Total hadir <b>' + c.tot + '</b> = pengurus wajib <b>' + c.h + '</b> + pendamping <b>' + c.p + '</b></div><div class="help" style="margin-top:.5rem"><i class="bi bi-info-circle"></i> Saat sesi ditutup, pengurus tanpa catatan dihitung <b>Alpa</b> di laporan.</div>';
   const pd = ST.D.filter(d => d.JadwalID === j.ID).sort((a, b) => String(b.Waktu).localeCompare(String(a.Waktu)));
   $('#scPdp').innerHTML = '<div class="card-h" style="margin-bottom:.5rem"><div><h3><i class="bi bi-person-raised-hand" style="color:var(--gold-d)"></i> Pendamping Hadir</h3><p>' + pd.length + ' orang · kartu PDP-…</p></div></div>' +
     (pd.length ? '<div class="bim-l">' + pd.map(d => '<div class="bim-i"><div style="min-width:0"><b>' + esc(d.Nama) + '</b>' + (d._pending ? ' <i class="bi bi-cloud-arrow-up mute"></i>' : '') + '<small class="mute" style="display:block">' + [d.Dapukan, d.Kelompok, d.Desa].filter(Boolean).map(esc).join(' · ') + ' · ' + esc(String(d.Waktu).slice(11, 16)) + '</small></div><button class="btn btn-ghost btn-sm btn-ic" data-act="pdpDel" data-id="' + d.ID + '" aria-label="Hapus"><i class="bi bi-trash"></i></button></div>').join('') + '</div>' : '<div class="help">Belum ada. Pindai kartu pendamping (PDP-001, …) untuk mengisi datanya.</div>');
@@ -950,7 +995,7 @@ function renderScanResult() {
   const el = $('#scRes'); if (!el) return; const r = ST.sc.last;
   if (!r) { el.className = 'res'; el.innerHTML = '<div class="res-h" style="color:var(--ink2)"><i class="bi bi-upc-scan"></i> Siap memindai</div><div class="help" style="margin-top:.25rem">Hasil pemindaian terakhir tampil di sini.</div>'; return; }
   const p = r.p; el.className = 'res ' + r.type;
-  const title = { ok: 'SCAN PRESENSI BERHASIL', dup: 'SUDAH TERCATAT HADIR', bad: 'KARTU TIDAK TERDAFTAR / RUSAK' }[r.type], ic = { ok: 'bi-check-circle-fill', dup: 'bi-exclamation-triangle-fill', bad: 'bi-x-octagon-fill' }[r.type];
+  const title = { ok: (p && p._pd ? 'PENDAMPING HADIR' : 'SCAN PRESENSI BERHASIL'), dup: (p && p._pd ? 'PENDAMPING SUDAH TERCATAT' : 'SUDAH TERCATAT HADIR'), bad: 'KARTU TIDAK TERDAFTAR / RUSAK' }[r.type], ic = { ok: 'bi-check-circle-fill', dup: 'bi-exclamation-triangle-fill', bad: 'bi-x-octagon-fill' }[r.type];
   el.innerHTML = '<div class="res-h"><i class="bi ' + ic + '"></i> ' + title + '<span class="mono" style="margin-left:auto;font-weight:500">' + esc(r.time) + '</span></div>' +
     (p ? '<div class="res-b">' + avatarHTML(p, 'big-av') + '<div style="min-width:0"><div class="mono mute">' + esc(p.Kode) + '</div><b style="font-size:1.0625rem;line-height:1.4rem;display:block">' + esc(p.Nama) + '</b><span class="ink2" style="font-size:.8125rem">' + esc(p.Dapukan) + ' · Kelompok ' + esc(p.Kelompok) + '</span></div></div>' + (r.type === 'dup' && r.first ? '<div class="help" style="margin-top:.5rem">Tercatat pertama pukul <b class="mono">' + esc(String(r.first).slice(11, 19)) + '</b>. Scan ganda ditolak.</div>' : '') :
       '<div style="margin-top:.5rem"><div class="mono" style="color:var(--rose-d);font-weight:600;word-break:break-all">' + esc(r.code) + '</div><div class="help" style="margin-top:.25rem">' + esc(r.msg || 'Kode tidak cocok dengan data pengurus aktif. Bersihkan kartu atau gunakan presensi manual.') + '</div></div>');
@@ -973,7 +1018,9 @@ function doScan(raw, metode) {
   if (!j) { toast('Pilih sesi terlebih dahulu.', 'warn'); return; }
   if (j.Status === 'Selesai') { toast('Sesi sudah ditutup.', 'warn'); return; }
   if (isPdpCode(code) && !ST.pByKode[code]) {
-    if (ST.D.some(d => d.JadwalID === j.ID && d.Kode === code)) { beep('dup'); toast('Kartu pendamping ' + code + ' sudah dipakai di sesi ini.', 'warn'); return; }
+    const pc = ST.PC.find(x => x.Kode === code), used = ST.D.find(d => d.JadwalID === j.ID && d.Kode === code);
+    if (used) { beep('dup'); ST.sc.last = { type: 'dup', p: { Nama: used.Nama, Dapukan: used.Dapukan, Kelompok: used.Kelompok || used.Desa, Kode: code, _pd: true }, time, first: used.Waktu }; renderScanResult(); return; }
+    if (pc && pc.Nama) { pdpRecord(j, code, { nama: pc.Nama, kelompok: pc.Kelompok, desa: pc.Desa, dapukan: pc.Dapukan }); return; }
     beep('ok'); pdpScanForm(code, j); return;
   }
   const p = ST.pByKode[code];
@@ -1000,14 +1047,14 @@ function doScan(raw, metode) {
 function manualSubmit(ev) {
   ev.preventDefault();
   const j = ST.jById[ST.sc.jadwalId], v = $('#mnP').value.trim(), err = $('#mnErr'); err.textContent = '';
-  const m = /·\s*([A-Za-z0-9-]+)\s*$/.exec(v), code = (m ? m[1] : v).toUpperCase();
-  const p = ST.pByKode[code] || ST.act.filter(x => x.Nama.toLowerCase() === v.toLowerCase())[0];
+  const code = v.toUpperCase();
+  const p = ST.pById[ST.sc.mnSel] || ST.pByKode[code] || ST.act.filter(x => x.Nama.toLowerCase() === v.toLowerCase())[0];
   if (!j) { err.textContent = 'Pilih sesi terlebih dahulu.'; return; }
-  if (!p) { err.textContent = 'Pengurus tidak ditemukan. Pilih dari daftar saran.'; return; }
+  if (!p) { err.textContent = 'Pilih pengurus dari daftar terlebih dahulu.'; return; }
   const status = $('input[name=mnS]:checked').value, ket = $('#mnK').value.trim(), key = j.ID + '|' + p.ID, ex = ST.kMap[key], prev = ex ? Object.assign({}, ex) : null;
   const rec = { ID: 'tmp' + uid(), JadwalID: j.ID, PengurusID: p.ID, Status: status, Metode: 'Manual', Keterangan: ket, Waktu: nowStr(), Oleh: ST.user.username, _pending: true };
   if (ex) Object.assign(ex, rec, { ID: ex.ID }); else ST.K.push(rec);
-  index(); rScanLive(); $('#mnP').value = ''; $('#mnK').value = ''; toast(p.Nama + ' → ' + status);
+  ST.sc.mnSel = null; $('#mnP').value = ''; $('#mnK').value = ''; index(); rScanLive(); toast(p.Nama + ' → ' + status);
   const payload = { jadwalId: j.ID, items: [{ pengurusId: p.ID, status, keterangan: ket }] };
   call('absen.manual', payload).then(r => { delete (ST.kMap[key] || {})._pending; applyServerRec(r); index(); if (ST.page === 'scan') rScanLive(); })
     .catch(e => {
@@ -1150,7 +1197,7 @@ function rLapBody() {
     }).join('') : '<tr><td colspan="' + (9 + last.length) + '"><div class="empty"><i class="bi bi-inbox"></i>Tidak ada data pada filter ini.</div></td></tr>') + '</tbody></table></div></div>' +
     (function () {
       const pd = lapPdp();
-      return '<div class="card card-p" style="margin-top:1rem"><div class="card-h"><div><h3><i class="bi bi-person-raised-hand" style="color:var(--gold-d)"></i> Pendamping Hadir <span class="tag" style="margin-left:.375rem">' + pd.length + ' orang</span></h3><p>Tamu / pendamping yang hadir pada sesi di rentang terpilih (tidak dihitung dalam persentase pengurus).</p></div></div>' +
+      return '<div class="card card-p" style="margin-top:1rem"><div class="card-h"><div><h3><i class="bi bi-person-raised-hand" style="color:var(--gold-d)"></i> Pendamping Hadir <span class="tag" style="margin-left:.375rem">' + pd.length + ' orang</span></h3><p>Total hadir pada rentang ini: <b>' + (lapData().sess.reduce((n, j) => n + sessCounts(j).h, 0) + pd.length) + '</b> = pengurus wajib ' + lapData().sess.reduce((n, j) => n + sessCounts(j).h, 0) + ' + pendamping ' + pd.length + '. Pendamping tidak dihitung dalam persentase kehadiran pengurus.</p></div></div>' +
         '<div class="tbl-wrap"><table class="t"><thead><tr><th>No</th><th>Tanggal</th><th>Sesi</th><th>Nama</th><th>Kelompok</th><th>Desa</th><th>Dapukan</th><th>Jam</th></tr></thead><tbody>' +
         (pd.length ? pd.map((x, i) => '<tr><td class="mono mute">' + pad(i + 1) + '</td><td>' + esc(fmtTgl(x.j.Tanggal)) + '</td><td>' + esc(x.j.Tema) + '</td><td><b>' + esc(x.d.Nama) + '</b></td><td>' + esc(x.d.Kelompok) + '</td><td>' + esc(x.d.Desa) + '</td><td>' + esc(x.d.Dapukan) + '</td><td class="mono">' + esc(String(x.d.Waktu).slice(11, 16)) + '</td></tr>').join('') : '<tr><td colspan="8"><div class="empty"><i class="bi bi-inbox"></i>Belum ada pendamping tercatat pada rentang ini.</div></td></tr>') + '</tbody></table></div></div>';
     })() +
@@ -1178,7 +1225,7 @@ function lapExport() {
   const { sess, rows } = lapData();
   const head = ['No', 'Kode', 'Nama', 'Kelompok', 'Dapukan'].concat(sess.map(j => 'S' + ST.noOf[j.ID] + ' ' + j.Tanggal)).concat(['Hadir', 'Izin', 'Sakit', 'Alpa', 'Persentase (%)']);
   const data = rows.map((r, i) => [i + 1, r.p.Kode, r.p.Nama, r.p.Kelompok, r.p.Dapukan].concat(sess.map(j => { const k = ST.kMap[j.ID + '|' + r.p.ID]; return k ? k.Status : 'Alpa'; })).concat([r.h, r.i, r.s, r.a, Math.round(r.pct * 10) / 10]));
-  exportXlsx([{ name: 'Rekap Kehadiran', rows: [head].concat(data) }, { name: 'Pendamping', rows: [['No', 'Tanggal', 'Sesi', 'Nama', 'Kelompok', 'Desa', 'Dapukan', 'Jam']].concat(lapPdp().map((x, i) => [i + 1, x.j.Tanggal, x.j.Tema, x.d.Nama, x.d.Kelompok, x.d.Desa, x.d.Dapukan, String(x.d.Waktu).slice(11, 16)])) }, { name: 'Daftar Sesi', rows: [['Sesi', 'Tanggal', 'Tema', 'Pemateri', 'Tempat']].concat(sess.map(j => [ST.noOf[j.ID], j.Tanggal, j.Tema, j.Pemateri, j.Tempat])) }], 'Rekap_Kehadiran_' + todayStr() + '.xlsx');
+  exportXlsx([{ name: 'Rekap Kehadiran', rows: [head].concat(data) }, { name: 'Pendamping', rows: [['No', 'Tanggal', 'Sesi', 'Nama', 'Kelompok', 'Desa', 'Dapukan', 'Jam']].concat(lapPdp().map((x, i) => [i + 1, x.j.Tanggal, x.j.Tema, x.d.Nama, x.d.Kelompok, x.d.Desa, x.d.Dapukan, String(x.d.Waktu).slice(11, 16)])) }, { name: 'Daftar Sesi', rows: [['Sesi', 'Tanggal', 'Tema', 'Pemateri', 'Tempat', 'Pengurus Hadir', 'Pendamping Hadir', 'Total Hadir']].concat(sess.map(j => { const c = sessCounts(j); return [ST.noOf[j.ID], j.Tanggal, j.Tema, j.Pemateri, j.Tempat, c.h, c.p, c.tot]; })) }], 'Rekap_Kehadiran_' + todayStr() + '.xlsx');
 }
 function lapPrint() {
   const { sess, rows } = lapData(), last = sess.slice(-12);
@@ -1364,7 +1411,7 @@ const ACT = {
   openScan: t => { ST.sc.jadwalId = t.dataset.id; navigate('scan'); },
   scanStart: startCam, scanSubmit, scanUndo: t => scanUndo(t.dataset.id), closeSesi: t => closeSesi(t.dataset.id),
   scanSound: () => { ST.sc.sound = !ST.sc.sound; const b = $('#scSndBtn'); if (b) b.innerHTML = '<i class="bi ' + (ST.sc.sound ? 'bi-volume-up' : 'bi-volume-mute') + '"></i>'; },
-  lapExcel: lapExport, lapPrint, lapLow, printPres: t => printPresensi(t.dataset.id),
+  mnPick: t => { ST.sc.mnSel = t.dataset.id; fillMn(); }, lapExcel: lapExport, lapPrint, lapLow, printPres: t => printPresensi(t.dataset.id),
   userAdd: () => userForm(), userEdit: t => userForm(t.dataset.id),
   userDel: async t => { if (!await confirmBox('Hapus pengguna?', 'Akun <b>' + esc(t.dataset.id) + '</b> akan dihapus permanen.', 'Hapus', true)) return; try { await call('user.delete', { username: t.dataset.id }); toast('Pengguna dihapus.'); loadUsers(); } catch (e) { toast(e.message, 'err'); } }
 };

@@ -21,3 +21,9 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Umur otomatis dari tanggal lahir (di kartu, tabel, dan form).
 - Logo di sidebar mengikuti logo yang diunggah di Pengaturan → ID Card.
 - Kartu Belakang: tombol "Cetak Belakang" / "Kartu Belakang" (cetak atau JPG).
+
+## Pembaruan 10 — Data Pendamping bernama
+- Pendamping didaftarkan lengkap (Nama, Dapukan, Jenis, Kelompok/Desa); kartu menampilkan nama & dapukan.
+- Scan kartu pendamping: nama langsung muncul dan hadir tercatat otomatis.
+- Absen manual hanya menampilkan pengurus yang belum absen.
+- Total hadir = pengurus wajib + pendamping (persentase tetap khusus pengurus).
