@@ -368,17 +368,17 @@ function pgFiltered() {
   const q = ($('#fgQ').value || '').toLowerCase().trim(), kel = $('#fgKel').value, dap = $('#fgDap').value, st = $('#fgSt').value;
   return ST.P.filter(p => {
     if (kel && p.Kelompok !== kel) return false;
-    if (dap && p.Dapukan !== dap) return false;
+    if (dap && !dapAll(p).some(x => x.d === dap)) return false;
     if (st === '1' && p.Aktif === false) return false;
     if (st === '0' && p.Aktif !== false) return false;
-    if (q && (p.Nama + ' ' + p.Kode + ' ' + p.Dapukan + ' ' + p.Kelompok + ' ' + (p.Desa || '') + ' ' + p.Alamat).toLowerCase().indexOf(q) < 0) return false;
+    if (q && (p.Nama + ' ' + p.Kode + ' ' + dapAll(p).map(x => x.d).join(' ') + ' ' + p.Kelompok + ' ' + (p.Desa || '') + ' ' + p.Alamat).toLowerCase().indexOf(q) < 0) return false;
     return true;
   }).sort((a, b) => String(a.Kode).localeCompare(String(b.Kode)));
 }
 const uniq = (arr, k) => Array.from(new Set(arr.map(x => x[k]).filter(Boolean))).sort();
 RENDER.pengurus = function () {
   ['addPengurus', 'printSelected', 'backCards', 'jpgSelected', 'delSelected', 'pdpCards'].forEach(a => { const b = $('[data-act=' + a + ']'); if (b) b.classList.toggle('hide', a === 'addPengurus' ? !canAdd() : !isMaster()); });
-  const kel = uniq(ST.P, 'Kelompok'), dap = uniq(ST.P, 'Dapukan');
+  const kel = uniq(ST.P, 'Kelompok'), dap = Array.from(new Set(ST.P.reduce((a, p) => a.concat(dapAll(p).map(x => x.d)), []).filter(Boolean))).sort();
   const sel = (id, def, list) => { const cur = $(id).value; $(id).innerHTML = '<option value="">' + def + '</option>' + list.map(x => '<option>' + esc(x) + '</option>').join(''); $(id).value = list.indexOf(cur) >= 0 ? cur : ''; };
   sel('#fgKel', 'Semua Kelompok', kel); sel('#fgDap', 'Semua Dapukan', dap);
   const avg = mean(ST.act.map(p => pStats(p.ID, ST.done).pct));
@@ -405,7 +405,7 @@ function rPgTable() {
         (ed ? '<td class="first" style="width:44px"><input type="checkbox" data-chg="selRow" data-id="' + p.ID + '" ' + (ST.pg.sel.has(p.ID) ? 'checked' : '') + ' aria-label="Pilih ' + esc(p.Nama) + '"></td>' : '') +
         '<td class="first"><div class="who">' + avatarHTML(p) + '<div style="min-width:0"><b>' + esc(p.Nama) + '</b><small>' + (p.Aktif === false ? '<span class="chip c-A nodot" style="padding:0 .4rem">Nonaktif</span> ' : '') + esc((p.TempatLahir ? p.TempatLahir + ', ' : '') + (dObj(p.TanggalLahir) ? fmtTgl(p.TanggalLahir, true) + ' · ' + umurOf(p.TanggalLahir) + ' th' : '')) + '</small></div></div></td>' +
         '<td data-l="Barcode"><span class="mono chip c-S nodot" style="padding:.1rem .5rem">' + esc(p.Kode) + '</span></td>' +
-        '<td data-l="Dapukan"><div style="text-align:inherit"><b style="font-weight:600">' + esc(p.Dapukan) + '</b><small class="mute" style="display:block">Kelompok ' + esc(p.Kelompok) + (p.Desa ? ' · ' + esc(p.Desa) : '') + '</small></div></td>' +
+        '<td data-l="Dapukan"><div style="text-align:inherit"><b style="font-weight:600">' + esc(p.Dapukan) + '</b>' + dapLain(p).map(x => '<div style="font-size:.8125rem;font-weight:500">' + esc(x.d) + ' <span class="mute">(' + esc(x.t) + ')</span></div>').join('') + '<small class="mute" style="display:block">Kelompok ' + esc(p.Kelompok) + (p.Desa ? ' · ' + esc(p.Desa) : '') + '</small></div></td>' +
         '<td data-l="Kontak" class="mono">' + esc(p.NoHP || '—') + '</td>' +
         '<td data-l="Kehadiran"><span class="mono" style="font-weight:600;color:' + (s.pct >= ST.config.Target ? 'var(--pri-d)' : 'var(--gold-d)') + '">' + fmtPct(s.pct) + '</span></td>' +
         (ed ? '<td data-l="Aksi" style="white-space:nowrap"><button class="btn btn-ghost btn-sm btn-ic" data-act="editPengurus" data-id="' + p.ID + '" aria-label="Ubah"><i class="bi bi-pencil"></i></button><button class="btn btn-ghost btn-sm btn-ic" data-act="printCard" data-id="' + p.ID + '" aria-label="Cetak kartu"><i class="bi bi-printer"></i></button></td>' : '') + '</tr>';

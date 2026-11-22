@@ -32,3 +32,4 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Pembaruan 13: tombol Simpan selalu tampil di bawah form pendamping.
 - Pembaruan 14: unggah foto pendamping (tampil di ID Card).
 - Pembaruan 15: pengurus bisa punya beberapa dapukan; ID Card menampilkan dapukan bertingkat tertinggi (Daerah > Desa > Kelompok).
+- Pembaruan 16: Data Pengurus menampilkan semua dapukan; filter & pencarian mencakup semua dapukan.
