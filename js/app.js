@@ -426,7 +426,7 @@ window.fitPf = fitPf;
 const SILH = '<svg viewBox="0 0 64 86" width="64" height="86" aria-hidden="true"><rect width="64" height="86" fill="#E2EAE6"/><circle cx="32" cy="32" r="14" fill="#94A9A0"/><path d="M6 86c2-22 14-30 26-30s24 8 26 30z" fill="#94A9A0"/></svg>';
 function cardHTML(p, cfg) {
   cfg = cfg || ST.config;
-  const pdp = !!p._pdp, hasImg = !pdp && !!p.FotoID;
+  const pdp = !!p._pdp, hasImg = !!p.FotoID;
   const ttl = ttlText(p);
   const moon = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15.5 3.2a9 9 0 1 0 5.3 13.9A7.5 7.5 0 0 1 15.5 3.2z" fill="#FBBF24"/><path d="M18.6 4.6l.7 1.6 1.7.2-1.3 1.1.4 1.7-1.5-.9-1.5.9.4-1.7-1.3-1.1 1.7-.2z" fill="#FBBF24"/></svg>';
   const logoSrc = cfg.LogoData || (cfg.LogoID ? 'https://lh3.googleusercontent.com/d/' + esc(cfg.LogoID) + '=w160' : '');
@@ -462,7 +462,7 @@ async function drawCardCanvas(p, cfg) {
   cfg = cfg || ST.config; const S = 6, W = 216, H = 344, pdp = !!p._pdp, FF = '"Plus Jakarta Sans", system-ui, "Segoe UI", Roboto, sans-serif';
   try { await Promise.all(['800 9px', '700 8px', '600 7px'].map(f => document.fonts.load(f + ' "Plus Jakarta Sans"')).concat([document.fonts.load('600 7px "JetBrains Mono"')])); } catch (e) { }
   const [photo, logo] = await Promise.all([
-    (!pdp && p.FotoID) ? imgFromId(p.FotoID).catch(() => null) : null,
+    p.FotoID ? imgFromId(p.FotoID).catch(() => null) : null,
     cfg.LogoData ? imgFromSrc(cfg.LogoData).catch(() => null) : (cfg.LogoID ? imgFromId(cfg.LogoID).catch(() => null) : null)
   ]);
   const cv = document.createElement('canvas'); cv.width = W * S; cv.height = H * S; const x = cv.getContext('2d'); x.scale(S, S);
@@ -744,32 +744,38 @@ async function exportXlsx(sheets, filename) {
    ============================================================ */
 const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
 const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: '', Dapukan: '', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
-const pcCard = pc => ({ _pdp: true, Kode: pc.Kode, Nama: pc.Nama || '', Dapukan: pc.Dapukan || '', Jenis: pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok', Kel: pc.Kelompok || '', Des: pc.Desa || '', TempatLahir: pc.TempatLahir || '', TanggalLahir: pc.TanggalLahir || '', Alamat: pc.Alamat || '', HP: pc.HP || '' });
+const pcCard = pc => ({ _pdp: true, Kode: pc.Kode, Nama: pc.Nama || '', Dapukan: pc.Dapukan || '', Jenis: pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok', Kel: pc.Kelompok || '', Des: pc.Desa || '', TempatLahir: pc.TempatLahir || '', TanggalLahir: pc.TanggalLahir || '', Alamat: pc.Alamat || '', HP: pc.HP || '', FotoID: pc.FotoID || '' });
 const pdpTitle = p => 'PENDAMPING ' + String(p.Jenis === 'Desa' ? 'DESA' : 'KELOMPOK');
-const pdpRows = p => p.Nama ? [['TTL', ttlText(p)]].concat(p.Jenis === 'Desa' ? [['Desa', p.Des || '—']] : [['Kelompok', p.Kel || '—'], ['Desa', p.Des || '—']], [['Alamat', p.Alamat || '—'], ['No. HP', p.HP || '—']]) : p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
+const pdpRows = p => p.Nama ? [['TTL', ttlText(p)]].concat(p.Jenis === 'Desa' ? [['Desa', p.Des || '—']] : [['Kelompok', p.Kel || '—'], ['Desa', p.Des || '—']], [['Alamat', p.Alamat || '—']]) : p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
 function nextPdpNo() { let m = 0; ST.D.concat(ST.PC).forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
 function pdpPrintList(l) { let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; doPrint(html); }
 function pdpCardsForm() {
   openModal('<div class="modal-h"><h3>Data &amp; Kartu Pendamping</h3><button class="btn btn-ghost btn-ic btn-sm" data-act="modalClose" aria-label="Tutup"><i class="bi bi-x-lg"></i></button></div><div class="modal-b">' +
     '<p class="ink2" style="margin-bottom:1rem">Daftarkan pendamping (nama, dapukan, kelompok/desa) lalu cetak kartunya. Saat kartu dipindai di sesi pengajian, <b>namanya langsung muncul dan hadir tercatat</b>.</p>' +
-    '<form id="pdForm" novalidate><input type="hidden" id="pdCode"><div class="row c2"><div class="fld"><label for="pdJ">Jenis pendamping</label><select class="select" id="pdJ"><option value="Kelompok">Pendamping Kelompok</option><option value="Desa">Pendamping Desa</option></select></div>' +
-    '<div class="fld"><label for="pdNm">Nama *</label><input class="input" id="pdNm" maxlength="80" autocomplete="off"></div></div>' +
-    '<div class="row c2"><div class="fld"><label for="pdDp">Dapukan</label><input class="input" id="pdDp" maxlength="60" placeholder="Contoh: Pendamping Kelompok"></div>' +
-    '<div class="fld" id="pdKw"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div></div>' +
-    '<div class="fld"><label for="pdDes">Desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
+    '<form id="pdForm" novalidate><input type="hidden" id="pdCode">' +
+    '<div class="upl fld"><div id="pdPhPv"><div class="big-av"><i class="bi bi-camera"></i></div></div><div><label class="btn btn-2 btn-sm" for="pdPh"><i class="bi bi-image"></i> Pilih Foto</label><input type="file" id="pdPh" accept="image/*" class="sr"><div class="help" style="margin-top:.375rem">Foto tampil utuh di ID Card (tidak dipotong).</div></div></div>' +
+    '<div class="fld"><label for="pdNm">Nama *</label><input class="input" id="pdNm" maxlength="80" autocomplete="off"></div>' +
     '<div class="row c2"><div class="fld"><label for="pdTmp">Tempat lahir</label><input class="input" id="pdTmp" maxlength="60" placeholder="Contoh: Ketapang"></div><div class="fld"><label for="pdTgl">Tanggal lahir</label><input class="input" type="date" id="pdTgl"></div></div>' +
-    '<div class="row c2"><div class="fld"><label for="pdAlm">Alamat</label><input class="input" id="pdAlm" maxlength="150" placeholder="Alamat lengkap"></div><div class="fld"><label for="pdHp">No. HP</label><input class="input" type="tel" inputmode="tel" id="pdHp" maxlength="20" placeholder="08xxxxxxxxxx"></div></div>' +
-    '<div class="err" id="pdErr" role="alert"></div><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="submit" class="btn btn-pri" id="pdSave"><i class="bi bi-plus-lg"></i> Tambah Pendamping</button><button type="button" class="btn btn-2 hide" id="pdCancel">Batal ubah</button></div></form>' +
-    '<div class="card-h" style="margin:1.25rem 0 .5rem"><div><h3 style="font-size:1rem">Pendamping Terdaftar <span class="tag" id="pdCnt"></span></h3></div></div><div id="pdList" class="bim-l"></div>' +
+    '<div class="row c2"><div class="fld"><label for="pdJ">Jenis pendamping</label><select class="select" id="pdJ"><option value="Kelompok">Pendamping Kelompok</option><option value="Desa">Pendamping Desa</option></select></div>' +
+    '<div class="fld"><label for="pdDp">Dapukan</label><input class="input" id="pdDp" maxlength="60" placeholder="Contoh: Pendamping Kelompok"></div></div>' +
+    '<div class="row c2"><div class="fld" id="pdKw"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div>' +
+    '<div class="fld"><label for="pdDes">Desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div></div>' +
+    '<div class="fld"><label for="pdHp">No. HP</label><input class="input" type="tel" inputmode="tel" id="pdHp" maxlength="20" placeholder="08xxxxxxxxxx"></div>' +
+    '<div class="fld"><label for="pdAlm">Alamat</label><input class="input" id="pdAlm" maxlength="150" placeholder="Alamat lengkap"></div>' +
+    '<div class="err" id="pdErr" role="alert"></div><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="submit" class="btn btn-pri" id="pdSave"><i class="bi bi-check2"></i> Simpan Pendamping</button><button type="button" class="btn btn-2 hide" id="pdCancel">Batal ubah</button></div></form>' +
+    '<div class="card-h" style="margin:1.25rem 0 .5rem"><div><h3 style="font-size:1rem">Pendamping Terdaftar <span class="tag" id="pdCnt"></span></h3></div></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem"><button type="button" class="btn btn-gold btn-sm" id="pdJpgAll"><i class="bi bi-file-earmark-image"></i> JPG Semua</button><button type="button" class="btn btn-2 btn-sm" id="pdPrintAll"><i class="bi bi-printer"></i> Cetak Semua</button></div><div id="pdList" class="bim-l"></div>' +
     '<div id="pdPv" style="display:flex;justify-content:center;margin-top:1rem"></div></div>' +
-    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="button" class="btn btn-gold" id="pdJpgAll"><i class="bi bi-file-earmark-image"></i> JPG Semua</button><button type="button" class="btn btn-pri" id="pdPrintAll"><i class="bi bi-printer"></i> Cetak Semua</button></div>',
+    '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Tutup</button><button type="submit" form="pdForm" class="btn btn-pri" id="pdSave2"><i class="bi bi-check2"></i> Simpan</button></div>',
     box => {
+      let ph = null;
+      const phPv = src => { $('#pdPhPv', box).innerHTML = '<div class="big-av" style="border-radius:50%">' + (src ? '<img alt="" src="' + src + '">' : '<i class="bi bi-camera"></i>') + '</div>'; };
+      $('#pdPh', box).onchange = async e => { const f = e.target.files[0]; if (!f) return; try { ph = await compressPhoto(f); phPv(ph); $('#pdErr', box).textContent = ''; } catch (er) { $('#pdErr', box).textContent = er.message; } };
       const reg = () => ST.PC.slice().sort((a, b) => a.Kode.localeCompare(b.Kode)), find = k => ST.PC.find(x => x.Kode === k);
       const preview = pc => { $('#pdPv', box).innerHTML = pc ? cardHTML(pcCard(pc)) : ''; if (pc) drawBarcodes($('#pdPv', box)); };
       const list = () => { const l = reg(); $('#pdCnt', box).textContent = l.length;
         $('#pdList', box).innerHTML = l.length ? l.map(pc => '<div class="bim-i" style="align-items:center"><div style="min-width:0;flex:1"><span class="mono mute">' + esc(pc.Kode) + '</span> <b>' + (pc.Nama ? esc(pc.Nama) : '<i class="mute">belum ada nama</i>') + '</b><small class="mute" style="display:block">' + [pc.Dapukan, 'Pend. ' + (pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'), pc.Jenis === 'Desa' ? '' : pc.Kelompok, pc.Desa].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
           '<div style="display:flex;gap:.125rem"><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="view" data-k="' + pc.Kode + '" aria-label="Lihat kartu"><i class="bi bi-eye"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="edit" data-k="' + pc.Kode + '" aria-label="Ubah"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="jpg" data-k="' + pc.Kode + '" aria-label="Unduh JPG"><i class="bi bi-file-earmark-image"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="print" data-k="' + pc.Kode + '" aria-label="Cetak"><i class="bi bi-printer"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="del" data-k="' + pc.Kode + '" aria-label="Hapus"><i class="bi bi-trash"></i></button></div></div>').join('') : '<div class="help">Belum ada pendamping terdaftar.</div>'; };
-      const reset = () => { ['pdCode', 'pdNm', 'pdDp', 'pdKel', 'pdDes', 'pdTmp', 'pdTgl', 'pdAlm', 'pdHp'].forEach(i => { $('#' + i, box).value = ''; }); $('#pdSave', box).innerHTML = '<i class="bi bi-plus-lg"></i> Tambah Pendamping'; $('#pdCancel', box).classList.add('hide'); };
+      const reset = () => { ph = null; $('#pdPh', box).value = ''; phPv(''); ['pdCode', 'pdNm', 'pdDp', 'pdKel', 'pdDes', 'pdTmp', 'pdTgl', 'pdAlm', 'pdHp'].forEach(i => { $('#' + i, box).value = ''; }); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Pendamping'; $('#pdCancel', box).classList.add('hide'); };
       const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; };
       $('#pdJ', box).onchange = jn;
       $('#pdCancel', box).onclick = reset;
@@ -780,7 +786,8 @@ function pdpCardsForm() {
         const c = { kode, jenis, nama, dapukan: $('#pdDp', box).value.trim(), kelompok: jenis === 'Desa' ? '' : $('#pdKel', box).value.trim(), desa: $('#pdDes', box).value.trim(), tempatLahir: $('#pdTmp', box).value.trim(), tanggalLahir: $('#pdTgl', box).value, alamat: $('#pdAlm', box).value.trim(), hp: $('#pdHp', box).value.trim() };
         try {
           const r = await call('pendamping.kartu', { cards: [c] });
-          (r.cards || []).forEach(x => { const i = ST.PC.findIndex(y => y.Kode === x.Kode); if (i >= 0) ST.PC[i] = x; else ST.PC.push(x); });
+          (r.cards || []).forEach(x => { const i = ST.PC.findIndex(y => y.Kode === x.Kode); if (i >= 0) ST.PC[i] = Object.assign({}, ST.PC[i], x); else ST.PC.push(x); });
+          if (ph) { try { const pr = await call('pendamping.photo', { kode, data: ph }); const q = find(kode); if (q) q.FotoID = pr.fotoId; } catch (e2) { toast('Data tersimpan, tetapi foto gagal: ' + e2.message, 'warn'); } }
           persistSoon(); toast(nama + ' tersimpan (' + kode + ')'); reset(); list(); preview(find(kode));
         } catch (e) { err.textContent = e.message; }
       };
@@ -790,7 +797,7 @@ function pdpCardsForm() {
         if (act === 'view') preview(pc);
         else if (act === 'print') pdpPrintList([pcCard(pc)]);
         else if (act === 'jpg') downloadCards([pcCard(pc)]);
-        else if (act === 'edit') { $('#pdCode', box).value = pc.Kode; $('#pdJ', box).value = pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'; $('#pdNm', box).value = pc.Nama || ''; $('#pdDp', box).value = pc.Dapukan || ''; $('#pdKel', box).value = pc.Kelompok || ''; $('#pdDes', box).value = pc.Desa || ''; $('#pdTmp', box).value = pc.TempatLahir || ''; $('#pdTgl', box).value = pc.TanggalLahir || ''; $('#pdAlm', box).value = pc.Alamat || ''; $('#pdHp', box).value = pc.HP || ''; jn(); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Perubahan'; $('#pdCancel', box).classList.remove('hide'); preview(pc); $('#pdNm', box).focus(); }
+        else if (act === 'edit') { $('#pdCode', box).value = pc.Kode; $('#pdJ', box).value = pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'; $('#pdNm', box).value = pc.Nama || ''; $('#pdDp', box).value = pc.Dapukan || ''; $('#pdKel', box).value = pc.Kelompok || ''; $('#pdDes', box).value = pc.Desa || ''; $('#pdTmp', box).value = pc.TempatLahir || ''; $('#pdTgl', box).value = pc.TanggalLahir || ''; $('#pdAlm', box).value = pc.Alamat || ''; $('#pdHp', box).value = pc.HP || ''; ph = null; phPv(pc.FotoID ? 'https://lh3.googleusercontent.com/d/' + pc.FotoID + '=w160' : ''); jn(); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Perubahan'; $('#pdCancel', box).classList.remove('hide'); preview(pc); $('#pdNm', box).focus(); }
         else if (act === 'del') {
           if (!await confirmBox('Hapus data pendamping?', 'Hapus <b>' + esc(pc.Nama || pc.Kode) + '</b> (' + esc(pc.Kode) + ')? Kartu yang sudah dicetak tidak berlaku lagi untuk terisi otomatis. Catatan kehadiran lama tetap ada.', 'Hapus', true)) return;
           try { await call('pendamping.kartuDel', { kode: pc.Kode }); ST.PC = ST.PC.filter(x => x.Kode !== pc.Kode); persistSoon(); list(); preview(null); toast('Data pendamping dihapus.'); } catch (e) { toast(e.message, 'err'); }

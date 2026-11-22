@@ -28,3 +28,6 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Absen manual hanya menampilkan pengurus yang belum absen.
 - Total hadir = pengurus wajib + pendamping (persentase tetap khusus pengurus).
 - Pembaruan 11: data pendamping ditambah Tempat/Tanggal lahir, Alamat, No. HP (tampil di kartu).
+- Pembaruan 12: urutan form pendamping disusun ulang; No. HP disimpan tetapi tidak dicetak di kartu.
+- Pembaruan 13: tombol Simpan selalu tampil di bawah form pendamping.
+- Pembaruan 14: unggah foto pendamping (tampil di ID Card).
