@@ -744,9 +744,9 @@ async function exportXlsx(sheets, filename) {
    ============================================================ */
 const isPdpCode = c => /^PDP-\d{3,5}$/.test(String(c).toUpperCase());
 const pdpCard = (n, o) => Object.assign({ _pdp: true, Kode: 'PDP-' + pad(n, 3), Nama: '', Dapukan: '', Jenis: 'Kelompok', Kel: '', Des: '' }, o || {});
-const pcCard = pc => ({ _pdp: true, Kode: pc.Kode, Nama: pc.Nama || '', Dapukan: pc.Dapukan || '', Jenis: pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok', Kel: pc.Kelompok || '', Des: pc.Desa || '' });
+const pcCard = pc => ({ _pdp: true, Kode: pc.Kode, Nama: pc.Nama || '', Dapukan: pc.Dapukan || '', Jenis: pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok', Kel: pc.Kelompok || '', Des: pc.Desa || '', TempatLahir: pc.TempatLahir || '', TanggalLahir: pc.TanggalLahir || '', Alamat: pc.Alamat || '', HP: pc.HP || '' });
 const pdpTitle = p => 'PENDAMPING ' + String(p.Jenis === 'Desa' ? 'DESA' : 'KELOMPOK');
-const pdpRows = p => p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
+const pdpRows = p => p.Nama ? [['TTL', ttlText(p)]].concat(p.Jenis === 'Desa' ? [['Desa', p.Des || '—']] : [['Kelompok', p.Kel || '—'], ['Desa', p.Des || '—']], [['Alamat', p.Alamat || '—'], ['No. HP', p.HP || '—']]) : p.Jenis === 'Desa' ? [['Desa', p.Des || '']] : [['Kelompok', p.Kel || ''], ['Desa', p.Des || '']];
 function nextPdpNo() { let m = 0; ST.D.concat(ST.PC).forEach(d => { const x = /^PDP-(\d+)$/.exec(d.Kode || ''); if (x) m = Math.max(m, +x[1]); }); return m + 1; }
 function pdpPrintList(l) { let html = ''; for (let i = 0; i < l.length; i += 10) html += '<div class="pcards">' + l.slice(i, i + 10).map(p => '<div class="pcell">' + cardHTML(p) + '</div>').join('') + '</div>'; doPrint(html); }
 function pdpCardsForm() {
@@ -757,6 +757,8 @@ function pdpCardsForm() {
     '<div class="row c2"><div class="fld"><label for="pdDp">Dapukan</label><input class="input" id="pdDp" maxlength="60" placeholder="Contoh: Pendamping Kelompok"></div>' +
     '<div class="fld" id="pdKw"><label for="pdKel">Kelompok</label><input class="input" id="pdKel" maxlength="40" placeholder="Contoh: Tumbang Titi"></div></div>' +
     '<div class="fld"><label for="pdDes">Desa</label><input class="input" id="pdDes" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
+    '<div class="row c2"><div class="fld"><label for="pdTmp">Tempat lahir</label><input class="input" id="pdTmp" maxlength="60" placeholder="Contoh: Ketapang"></div><div class="fld"><label for="pdTgl">Tanggal lahir</label><input class="input" type="date" id="pdTgl"></div></div>' +
+    '<div class="row c2"><div class="fld"><label for="pdAlm">Alamat</label><input class="input" id="pdAlm" maxlength="150" placeholder="Alamat lengkap"></div><div class="fld"><label for="pdHp">No. HP</label><input class="input" type="tel" inputmode="tel" id="pdHp" maxlength="20" placeholder="08xxxxxxxxxx"></div></div>' +
     '<div class="err" id="pdErr" role="alert"></div><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="submit" class="btn btn-pri" id="pdSave"><i class="bi bi-plus-lg"></i> Tambah Pendamping</button><button type="button" class="btn btn-2 hide" id="pdCancel">Batal ubah</button></div></form>' +
     '<div class="card-h" style="margin:1.25rem 0 .5rem"><div><h3 style="font-size:1rem">Pendamping Terdaftar <span class="tag" id="pdCnt"></span></h3></div></div><div id="pdList" class="bim-l"></div>' +
     '<div id="pdPv" style="display:flex;justify-content:center;margin-top:1rem"></div></div>' +
@@ -767,7 +769,7 @@ function pdpCardsForm() {
       const list = () => { const l = reg(); $('#pdCnt', box).textContent = l.length;
         $('#pdList', box).innerHTML = l.length ? l.map(pc => '<div class="bim-i" style="align-items:center"><div style="min-width:0;flex:1"><span class="mono mute">' + esc(pc.Kode) + '</span> <b>' + (pc.Nama ? esc(pc.Nama) : '<i class="mute">belum ada nama</i>') + '</b><small class="mute" style="display:block">' + [pc.Dapukan, 'Pend. ' + (pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'), pc.Jenis === 'Desa' ? '' : pc.Kelompok, pc.Desa].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
           '<div style="display:flex;gap:.125rem"><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="view" data-k="' + pc.Kode + '" aria-label="Lihat kartu"><i class="bi bi-eye"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="edit" data-k="' + pc.Kode + '" aria-label="Ubah"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="jpg" data-k="' + pc.Kode + '" aria-label="Unduh JPG"><i class="bi bi-file-earmark-image"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="print" data-k="' + pc.Kode + '" aria-label="Cetak"><i class="bi bi-printer"></i></button><button type="button" class="btn btn-ghost btn-sm btn-ic" data-pd="del" data-k="' + pc.Kode + '" aria-label="Hapus"><i class="bi bi-trash"></i></button></div></div>').join('') : '<div class="help">Belum ada pendamping terdaftar.</div>'; };
-      const reset = () => { ['pdCode', 'pdNm', 'pdDp', 'pdKel', 'pdDes'].forEach(i => { $('#' + i, box).value = ''; }); $('#pdSave', box).innerHTML = '<i class="bi bi-plus-lg"></i> Tambah Pendamping'; $('#pdCancel', box).classList.add('hide'); };
+      const reset = () => { ['pdCode', 'pdNm', 'pdDp', 'pdKel', 'pdDes', 'pdTmp', 'pdTgl', 'pdAlm', 'pdHp'].forEach(i => { $('#' + i, box).value = ''; }); $('#pdSave', box).innerHTML = '<i class="bi bi-plus-lg"></i> Tambah Pendamping'; $('#pdCancel', box).classList.add('hide'); };
       const jn = () => { $('#pdKw', box).style.display = $('#pdJ', box).value === 'Desa' ? 'none' : ''; };
       $('#pdJ', box).onchange = jn;
       $('#pdCancel', box).onclick = reset;
@@ -775,7 +777,7 @@ function pdpCardsForm() {
         ev.preventDefault(); const nama = $('#pdNm', box).value.trim(), err = $('#pdErr', box); err.textContent = '';
         if (nama.length < 2) { err.textContent = 'Nama pendamping wajib diisi.'; return; }
         const kode = $('#pdCode', box).value || 'PDP-' + pad(nextPdpNo(), 3), jenis = $('#pdJ', box).value;
-        const c = { kode, jenis, nama, dapukan: $('#pdDp', box).value.trim(), kelompok: jenis === 'Desa' ? '' : $('#pdKel', box).value.trim(), desa: $('#pdDes', box).value.trim() };
+        const c = { kode, jenis, nama, dapukan: $('#pdDp', box).value.trim(), kelompok: jenis === 'Desa' ? '' : $('#pdKel', box).value.trim(), desa: $('#pdDes', box).value.trim(), tempatLahir: $('#pdTmp', box).value.trim(), tanggalLahir: $('#pdTgl', box).value, alamat: $('#pdAlm', box).value.trim(), hp: $('#pdHp', box).value.trim() };
         try {
           const r = await call('pendamping.kartu', { cards: [c] });
           (r.cards || []).forEach(x => { const i = ST.PC.findIndex(y => y.Kode === x.Kode); if (i >= 0) ST.PC[i] = x; else ST.PC.push(x); });
@@ -788,7 +790,7 @@ function pdpCardsForm() {
         if (act === 'view') preview(pc);
         else if (act === 'print') pdpPrintList([pcCard(pc)]);
         else if (act === 'jpg') downloadCards([pcCard(pc)]);
-        else if (act === 'edit') { $('#pdCode', box).value = pc.Kode; $('#pdJ', box).value = pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'; $('#pdNm', box).value = pc.Nama || ''; $('#pdDp', box).value = pc.Dapukan || ''; $('#pdKel', box).value = pc.Kelompok || ''; $('#pdDes', box).value = pc.Desa || ''; jn(); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Perubahan'; $('#pdCancel', box).classList.remove('hide'); preview(pc); $('#pdNm', box).focus(); }
+        else if (act === 'edit') { $('#pdCode', box).value = pc.Kode; $('#pdJ', box).value = pc.Jenis === 'Desa' ? 'Desa' : 'Kelompok'; $('#pdNm', box).value = pc.Nama || ''; $('#pdDp', box).value = pc.Dapukan || ''; $('#pdKel', box).value = pc.Kelompok || ''; $('#pdDes', box).value = pc.Desa || ''; $('#pdTmp', box).value = pc.TempatLahir || ''; $('#pdTgl', box).value = pc.TanggalLahir || ''; $('#pdAlm', box).value = pc.Alamat || ''; $('#pdHp', box).value = pc.HP || ''; jn(); $('#pdSave', box).innerHTML = '<i class="bi bi-check2"></i> Simpan Perubahan'; $('#pdCancel', box).classList.remove('hide'); preview(pc); $('#pdNm', box).focus(); }
         else if (act === 'del') {
           if (!await confirmBox('Hapus data pendamping?', 'Hapus <b>' + esc(pc.Nama || pc.Kode) + '</b> (' + esc(pc.Kode) + ')? Kartu yang sudah dicetak tidak berlaku lagi untuk terisi otomatis. Catatan kehadiran lama tetap ada.', 'Hapus', true)) return;
           try { await call('pendamping.kartuDel', { kode: pc.Kode }); ST.PC = ST.PC.filter(x => x.Kode !== pc.Kode); persistSoon(); list(); preview(null); toast('Data pendamping dihapus.'); } catch (e) { toast(e.message, 'err'); }

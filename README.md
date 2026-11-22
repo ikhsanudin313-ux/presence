@@ -27,3 +27,4 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Scan kartu pendamping: nama langsung muncul dan hadir tercatat otomatis.
 - Absen manual hanya menampilkan pengurus yang belum absen.
 - Total hadir = pengurus wajib + pendamping (persentase tetap khusus pengurus).
+- Pembaruan 11: data pendamping ditambah Tempat/Tanggal lahir, Alamat, No. HP (tampil di kartu).
