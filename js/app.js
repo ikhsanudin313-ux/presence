@@ -44,6 +44,9 @@ const canAdd = () => CUR_ROLE === 'master' || CUR_ROLE === 'penerobos';
 const canScan = () => CUR_ROLE === 'master' || CUR_ROLE === 'penerobos';
 const cfgOrg = c => (c.CardOrg || c.AppName || 'Absensi Pengajian');
 const tingkatOf = p => (p && p.Tingkat) || 'Daerah';
+const TK_RANK = { Daerah: 0, Desa: 1, Kelompok: 2 };
+const dapLain = p => { let a = p && p.DapukanLain; if (typeof a === 'string') { try { a = JSON.parse(a || '[]'); } catch (e) { a = []; } } return Array.isArray(a) ? a : []; };
+const dapAll = p => p ? [{ d: p.Dapukan || '', t: tingkatOf(p) }].concat(dapLain(p)) : [];
 
 /* ---------- State ---------- */
 const ST = {
@@ -596,7 +599,7 @@ function drawBarcodes(root) {
 function rPgPreview() {
   const p = ST.pById[ST.pg.cur], box = $('#pgPreview');
   if (!p) { box.innerHTML = '<div class="empty"><i class="bi bi-person-vcard"></i>Pilih pengurus untuk melihat pratinjau kartu.</div>'; return; }
-  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) + (CUR_ROLE === 'penerobos' ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div>' : !isMaster() ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
+  box.innerHTML = '<div class="card-h"><div><h3>Pratinjau Kartu</h3><p>54 × 86 mm (CR80 potret)</p></div></div>' + cardHTML(p) +(dapLain(p).length ? '<div class="help" style="margin-top:.5rem;text-align:center">Dapukan lain: ' + dapLain(p).map(x => esc(x.d) + ' (' + esc(x.t) + ')').join(', ') + '</div>' : '') + (CUR_ROLE === 'penerobos' ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div>' : !isMaster() ? '<div class="pv-acts"><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button><button class="btn btn-pri" data-act="bimbinganFor" data-id="' + p.ID + '"><i class="bi bi-chat-heart"></i> Kirim Bimbingan</button></div>' : '') +
     (!isMaster() ? '' : '<div class="pv-acts"><div class="row c2"><button class="btn btn-pri" data-act="printCard" data-id="' + p.ID + '"><i class="bi bi-printer"></i> Cetak</button><button class="btn btn-gold" data-act="cardJpg" data-id="' + p.ID + '"><i class="bi bi-file-earmark-image"></i> Unduh JPG</button></div><button class="btn btn-2" data-act="backCards"><i class="bi bi-credit-card-2-back"></i> Kartu Belakang</button>' +
     '<div class="row c2"><button class="btn btn-2" data-act="editPengurus" data-id="' + p.ID + '"><i class="bi bi-pencil"></i> Ubah</button><button class="btn btn-2" data-act="regenKode" data-id="' + p.ID + '"><i class="bi bi-arrow-repeat"></i> Barcode Baru</button></div>' +
     '<div class="row c2"><button class="btn btn-2" data-act="togglePengurus" data-id="' + p.ID + '"><i class="bi bi-' + (p.Aktif === false ? 'toggle-off' : 'toggle-on') + '"></i> ' + (p.Aktif === false ? 'Aktifkan' : 'Nonaktifkan') + '</button><button class="btn btn-danger" data-act="delPengurus" data-id="' + p.ID + '"><i class="bi bi-trash"></i> Hapus</button></div></div>');
@@ -640,14 +643,17 @@ function pengurusForm(id) {
     '<div class="row c2"><div class="fld"><label for="fTmp">Tempat lahir</label><input class="input" id="fTmp" value="' + v('TempatLahir') + '" maxlength="60"></div><div class="fld"><label for="fTgl">Tanggal lahir</label><input class="input" id="fTgl" type="date" value="' + v('TanggalLahir') + '"><div class="help" id="fUmur"></div></div></div>' +
     '<div class="fld"><label for="fKel">Kelompok *</label><input class="input" id="fKel" list="dlKel" value="' + v('Kelompok') + '" maxlength="40" required></div>' +
     '<div class="fld"><label for="fDesa">Desa</label><input class="input" id="fDesa" list="dlDesa" value="' + v('Desa') + '" maxlength="40" placeholder="Contoh: Desa Sukamaju"></div>' +
-    '<div class="fld"><label for="fDap">Dapukan *</label><input class="input" id="fDap" list="dlDap" value="' + v('Dapukan') + '" maxlength="60" required></div>' +
-    '<div class="fld"><label for="fTk">Tingkat pengurus *</label><select class="select" id="fTk">' + ['Daerah', 'Desa', 'Kelompok'].map(t => '<option ' + (tingkatOf(p) === t ? 'selected' : '') + '>' + t + '</option>').join('') + '</select><div class="help">Menentukan tulisan di ID Card: “ID CARD PENGURUS …”.</div></div>' +
-    '<datalist id="dlKel">' + uniq(ST.P, 'Kelompok').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDesa">' + uniq(ST.P, 'Desa').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDap">' + uniq(ST.P, 'Dapukan').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
+    '<div class="fld"><label>Dapukan * <small class="mute">(boleh lebih dari satu)</small></label><div id="fDapL"></div><button type="button" class="btn btn-2 btn-sm" id="fDapAdd" style="margin-top:.375rem"><i class="bi bi-plus-lg"></i> Tambah dapukan</button><div class="help">Pada ID Card hanya tampil dapukan dengan tingkat tertinggi (Daerah &gt; Desa &gt; Kelompok), dan tulisan “ID CARD PENGURUS …” mengikuti tingkat itu.</div></div>' +
+        '<datalist id="dlKel">' + uniq(ST.P, 'Kelompok').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDesa">' + uniq(ST.P, 'Desa').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist><datalist id="dlDap">' + uniq(ST.P, 'Dapukan').map(x => '<option value="' + esc(x) + '">').join('') + '</datalist>' +
     '<div class="fld"><label for="fAlm">Alamat</label><textarea class="textarea" id="fAlm" maxlength="200">' + v('Alamat') + '</textarea></div>' +
     '<div class="row c2"><div class="fld"><label for="fHp">No. HP / WA</label><input class="input" id="fHp" inputmode="tel" value="' + v('NoHP') + '" maxlength="20"></div><div class="fld"><label for="fAkt">Status</label><select class="select" id="fAkt"><option value="1">Aktif</option><option value="0" ' + (p && p.Aktif === false ? 'selected' : '') + '>Nonaktif</option></select></div></div>' +
     '<div class="err" id="fErr" role="alert"></div></div>' +
     '<div class="modal-f"><button type="button" class="btn btn-2" data-act="modalClose">Batal</button><button type="submit" class="btn btn-pri"><i class="bi bi-check2"></i> Simpan</button></div></form>',
     box => {
+      const dapRow = (d, t) => '<div class="dap-r" style="display:flex;gap:.375rem;margin-bottom:.375rem"><input class="input" list="dlDap" maxlength="60" placeholder="Nama dapukan" value="' + esc(d) + '" style="flex:1;min-width:0"><select class="select" style="width:7.5rem;flex:none">' + ['Daerah', 'Desa', 'Kelompok'].map(x => '<option ' + (t === x ? 'selected' : '') + '>' + x + '</option>').join('') + '</select><button type="button" class="btn btn-ghost btn-sm btn-ic" data-dapdel aria-label="Hapus dapukan"><i class="bi bi-x-lg"></i></button></div>';
+      const dapBox = $('#fDapL', box); dapBox.innerHTML = (p ? dapAll(p) : [{ d: '', t: 'Daerah' }]).map(x => dapRow(x.d, x.t)).join('');
+      $('#fDapAdd', box).onclick = () => { dapBox.insertAdjacentHTML('beforeend', dapRow('', 'Kelompok')); dapBox.lastChild.querySelector('input').focus(); };
+      dapBox.onclick = e => { const b = e.target.closest('[data-dapdel]'); if (!b) return; if (dapBox.children.length > 1) b.closest('.dap-r').remove(); else b.closest('.dap-r').querySelector('input').value = ''; };
       const tg = $('#fTgl', box), up = () => { const u = umurOf(tg.value); $('#fUmur', box).textContent = u !== '' ? 'Umur: ' + u + ' tahun' : ''; }; tg.oninput = tg.onchange = up; up();
       $('#fPhoto', box).onchange = async e => {
         const f = e.target.files[0]; if (!f) return;
@@ -655,8 +661,11 @@ function pengurusForm(id) {
       };
       $('#fPg', box).onsubmit = ev => {
         ev.preventDefault();
-        const rec = { ID: p ? p.ID : '', Nama: $('#fNama').value.trim(), TempatLahir: $('#fTmp').value.trim(), TanggalLahir: $('#fTgl').value, Kelompok: $('#fKel').value.trim(), Desa: $('#fDesa').value.trim(), Tingkat: $('#fTk').value, Alamat: $('#fAlm').value.trim(), Dapukan: $('#fDap').value.trim(), NoHP: $('#fHp').value.trim(), Aktif: $('#fAkt').value === '1' };
-        if (!rec.Nama || !rec.Kelompok || !rec.Dapukan) { $('#fErr').textContent = 'Nama, kelompok, dan dapukan wajib diisi.'; return; }
+        const rec = { ID: p ? p.ID : '', Nama: $('#fNama').value.trim(), TempatLahir: $('#fTmp').value.trim(), TanggalLahir: $('#fTgl').value, Kelompok: $('#fKel').value.trim(), Desa: $('#fDesa').value.trim(), Alamat: $('#fAlm').value.trim(), NoHP: $('#fHp').value.trim(), Aktif: $('#fAkt').value === '1' };
+        const ds = [...dapBox.querySelectorAll('.dap-r')].map(x => ({ d: x.querySelector('input').value.trim(), t: x.querySelector('select').value })).filter(x => x.d);
+        if (!rec.Nama || !rec.Kelompok || !ds.length) { $('#fErr').textContent = 'Nama, kelompok, dan minimal satu dapukan wajib diisi.'; return; }
+        ds.sort((a, b) => TK_RANK[a.t] - TK_RANK[b.t]);                       // urut stabil: tingkat tertinggi jadi dapukan utama
+        rec.Dapukan = ds[0].d; rec.Tingkat = ds[0].t; rec.DapukanLain = JSON.stringify(ds.slice(1));
         savePengurus(rec, photo);
       };
     });

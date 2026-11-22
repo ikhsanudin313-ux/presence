@@ -31,3 +31,4 @@ Panduan lengkap: lihat `PANDUAN-INSTALASI.md`.
 - Pembaruan 12: urutan form pendamping disusun ulang; No. HP disimpan tetapi tidak dicetak di kartu.
 - Pembaruan 13: tombol Simpan selalu tampil di bawah form pendamping.
 - Pembaruan 14: unggah foto pendamping (tampil di ID Card).
+- Pembaruan 15: pengurus bisa punya beberapa dapukan; ID Card menampilkan dapukan bertingkat tertinggi (Daerah > Desa > Kelompok).
